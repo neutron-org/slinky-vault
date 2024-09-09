@@ -1,0 +1,25 @@
+[package]
+name = "mmvault"
+version = "0.1.0"
+description = "market making vault"
+edition = { workspace = true }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+library = []
+
+[dependencies]
+serde_json = "1.0"
+schemars = {  workspace = true }
+serde = { version = "1.0.180", default-features = false, features = ["derive"] }
+cosmwasm-std = { workspace = true }
+cw2 = {  workspace = true }
+cw-storage-plus = { workspace = true }
+neutron-sdk = { workspace = true }
+thiserror = { workspace = true }
+test-case = { workspace = true }
+
+[dev-dependencies]
+cosmwasm-schema = { workspace = true }
