@@ -29,6 +29,9 @@ pub enum ContractError {
     #[error( "Market {symbol}, {quote} did not return an block height")]
     PriceAgeUnavailable { symbol: String, quote: String},
 
+    #[error("Market {symbol}, {quote} did not return a block height")]
+    PriceNotAvailable { symbol: String, quote: String },
+    
     #[error( "Market {symbol}, {quote} returned a nil price")]
     PriceIsNil { symbol: String, quote: String},
 

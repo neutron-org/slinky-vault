@@ -1,36 +1,14 @@
-use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
-use crate::state::{Balances, Config, PairData, TokenData, CONFIG};
+use crate::error::{ContractError, ContractResult};
+use crate::state::CONFIG;
 use crate::utils::*;
-
 use cosmwasm_std::{
-    attr, entry_point, to_json_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env,
-    Int128, MessageInfo, QueryRequest, Response, StdResult, Uint128, Uint64,
+    BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult, Uint128,
 };
-use cw2::set_contract_version;
-
-pub type ContractResult<T> = core::result::Result<T, ContractError>;
-use neutron_sdk::bindings::marketmap::query::{MarketMapQuery, MarketMapResponse, MarketResponse};
-use neutron_sdk::bindings::marketmap::types::MarketMap;
-use neutron_sdk::bindings::oracle::query::{
-    GetAllCurrencyPairsResponse, GetPriceResponse, GetPricesResponse, OracleQuery,
+use neutron_std::types::neutron::dex::{
+    DepositOptions, DexQuerier, MsgDeposit, MsgWithdrawal, QueryAllUserDepositsResponse,
 };
 
-use neutron_sdk::bindings::dex::msg::DexMsg;
-use neutron_sdk::bindings::dex::query::{AllUserDepositsResponse, DexQuery};
-use neutron_sdk::bindings::dex::types::DepositOption;
-use neutron_sdk::proto_types::neutron::dex;
-use neutron_sdk::proto_types::neutron::dex::QueryAllUserDepositsResponse;
-
-use neutron_sdk::bindings::oracle::types::CurrencyPair;
-use neutron_sdk::bindings::{msg::NeutronMsg, query::NeutronQuery};
-use serde_json::to_string;
-
-pub fn deposit(
-    deps: DepsMut<NeutronQuery>,
-    _env: Env,
-    info: MessageInfo,
-) -> Result<Response<NeutronMsg>, ContractError> {
+pub fn deposit(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     // Load the contract configuration from storage
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -65,11 +43,7 @@ pub fn deposit(
         .add_attribute("token_1_amount", config.balances.token_1.amount.to_string()))
 }
 
-pub fn withdraw(
-    deps: DepsMut<NeutronQuery>,
-    _env: Env,
-    info: MessageInfo,
-) -> Result<Response<NeutronMsg>, ContractError> {
+pub fn withdraw(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     // Load the contract configuration to access the owner address and balances
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -84,7 +58,7 @@ pub fn withdraw(
     }
 
     // Prepare messages to send the entire balance of each token back to the owner
-    let mut messages: Vec<cosmwasm_std::CosmosMsg<NeutronMsg>> = vec![];
+    let mut messages: Vec<CosmosMsg> = vec![];
 
     if !config.balances.token_0.amount.is_zero() {
         messages.push(
@@ -120,7 +94,7 @@ pub fn withdraw(
     CONFIG.save(deps.storage, &config)?;
 
     // Return a successful response with the messages to transfer the funds
-    Ok(Response::<NeutronMsg>::new()
+    Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "withdraw_all")
         .add_attribute("owner", config.owner.to_string())
@@ -134,11 +108,7 @@ pub fn withdraw(
         ))
 }
 
-pub fn dex_deposit(
-    deps: DepsMut<NeutronQuery>,
-    env: Env,
-    info: MessageInfo,
-) -> Result<Response<NeutronMsg>, ContractError> {
+pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     // Load the contract configuration
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -147,17 +117,11 @@ pub fn dex_deposit(
         return Err(ContractError::Unauthorized {});
     }
 
-    let mut messages: Vec<CosmosMsg<NeutronMsg>> = vec![];
+    let mut messages: Vec<CosmosMsg> = vec![];
 
     // get the current slinky price and tick index
-    let prices = get_prices(deps.as_ref(), env.clone())?;
+    let prices: crate::msg::CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
     let tick_index = price_to_tick_index(prices.price_0_to_1)?;
-
-    // Update balances in the config
-    update_contract_balance(&deps, env.clone(), &mut config)?;
-
-    // Save the updated config directly to storage
-    CONFIG.save(deps.storage, &config)?;
 
     let (lo_messages, expected_amount0, expected_amount1) =
         prepare_state(&deps, &env, &mut config, &prices, tick_index)?;
@@ -205,33 +169,35 @@ pub fn dex_deposit(
     CONFIG.save(deps.storage, &config)?;
 
     // Prepare the deposit message with updated balances
-    let dex_msg = DexMsg::Deposit {
+    let dex_msg = Into::<CosmosMsg>::into(MsgDeposit {
+        creator: env.contract.address.to_string(),
         receiver: env.contract.address.to_string(),
         token_a: config.pair_data.token_0.denom.clone(),
         token_b: config.pair_data.token_1.denom.clone(),
-        amounts_a: vec![deposit_data.amount0],
-        amounts_b: vec![deposit_data.amount1],
+        amounts_a: vec![deposit_data.amount0.to_string()],
+        amounts_b: vec![deposit_data.amount1.to_string()],
         tick_indexes_a_to_b: vec![deposit_data.tick_index],
         fees: vec![deposit_data.fee],
-        options: vec![DepositOption {
-            disable_swap: false,
+        options: vec![DepositOptions {
+            disable_autoswap: false,
+            fail_tx_on_bel: false,
         }],
-    };
+    });
 
     // Create the response with the deposit message
-    messages.push(CosmosMsg::Custom(NeutronMsg::Dex(dex_msg)));
+    messages.push(dex_msg);
     Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "dex_deposit"))
 }
 
 pub fn dex_withdrawal(
-    deps: DepsMut<NeutronQuery>,
+    deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-) -> Result<Response<NeutronMsg>, ContractError> {
+) -> Result<Response, ContractError> {
     // Load the contract configuration to access the owner address and balances
-    let mut config = CONFIG.load(deps.storage)?;
+    let config = CONFIG.load(deps.storage)?;
 
     // Verify that the sender is the owßner
     if info.sender != config.owner {
@@ -239,18 +205,19 @@ pub fn dex_withdrawal(
     }
 
     // Prepare a vector to hold withdrawals
-    let mut messages: Vec<CosmosMsg<NeutronMsg>> = vec![];
+    let mut messages: Vec<CosmosMsg> = vec![];
 
     // Check if there are any active deposits
 
-    let dex_querier = dex::DexQuerier::new(&deps.querier);
+    let dex_querier = DexQuerier::new(&deps.querier);
     let res: QueryAllUserDepositsResponse =
         dex_querier.user_deposits_all(_env.contract.address.to_string(), None, true)?;
     // let res: AllUserDepositsResponse = deps.querier.query(&query_msg.into())?;
 
     // If there are any active deposits, withdraw all of them
     for deposit in res.deposits.iter() {
-        let withdraw_msg = DexMsg::Withdrawal {
+        let withdraw_msg = Into::<CosmosMsg>::into(MsgWithdrawal {
+            creator: _env.contract.address.to_string(),
             receiver: _env.contract.address.to_string(),
             token_a: config.pair_data.token_0.denom.clone(),
             token_b: config.pair_data.token_1.denom.clone(),
@@ -260,13 +227,38 @@ pub fn dex_withdrawal(
                 .expect("Failed to parse the string as an integer")],
             tick_indexes_a_to_b: vec![deposit.center_tick_index],
             fees: vec![deposit.fee], // Handle `None` case with `unwrap_or`
-        };
+        });
         // Wrap the DexMsg into a CosmosMsg::Custom
-        messages.push(CosmosMsg::Custom(NeutronMsg::Dex(withdraw_msg)));
+        messages.push(withdraw_msg);
     }
 
     // Add the message to the response and return
     Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "dex_deposit"))
+}
+
+pub fn handle_reply(
+    deps: DepsMut,
+    env: Env,
+    msg_result: SubMsgResult,
+    schedule_id: u64,
+) -> Result<Response, ContractError> {
+    match msg_result {
+        SubMsgResult::Ok(result) => {
+            let mut config = CONFIG.load(deps.storage)?;
+            // Update balances in the config
+            update_contract_balance(&deps, env.clone(), &mut config)?;
+
+            // Save the updated config directly to storage
+            CONFIG.save(deps.storage, &config)?;
+            Ok(Response::new()
+                .add_attribute("action", "place_limit_order_reply_success")
+                .add_attribute("schedule_id", schedule_id.to_string()))
+        }
+        SubMsgResult::Err(err) => Ok(Response::new()
+            .add_attribute("action", "place_limit_order_reply_error")
+            .add_attribute("error", err)
+            .add_attribute("schedule_id", schedule_id.to_string())),
+    }
 }

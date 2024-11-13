@@ -1,41 +1,26 @@
 use std::str::FromStr;
 
-use crate::error::ContractError;
+use crate::error::{ContractError, ContractResult};
 use crate::msg::{
-    CombinedPriceResponse, DepositResult, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
-};
+CombinedPriceResponse, DepositResult};
 use crate::state::{Config, PairData, TokenData, CONFIG};
 use cosmwasm_std::{
-    attr, entry_point, to_json_binary, BalanceResponse, BankQuery, Binary, Coin, CosmosMsg,
-    Decimal, Deps, DepsMut, Env, Fraction, Int128, MessageInfo, QueryRequest, Response, StdResult,
-    Uint128, Uint64,
+    BalanceResponse, BankQuery, Coin, CosmosMsg,
+    Decimal, Deps, DepsMut, Env, Int128, QueryRequest, Response,
+    Uint128
 };
-use cw2::set_contract_version;
-use serde::{Deserialize, Serialize};
-
-pub type ContractResult<T> = core::result::Result<T, ContractError>;
-use neutron_sdk::bindings::marketmap::query::{MarketMapQuery, MarketMapResponse, MarketResponse};
-use neutron_sdk::bindings::marketmap::types::MarketMap;
-
-use neutron_sdk::bindings::oracle::query::{
-    GetAllCurrencyPairsResponse, GetPriceResponse, GetPricesResponse, OracleQuery,
+use neutron_std::types::{
+    cosmos::base::query::v1beta1::PageRequest,
+    neutron::dex::{
+        DexQuerier, LimitOrderType, MsgPlaceLimitOrder, TickLiquidity,
+        tick_liquidity::Liquidity,
+    },
+    slinky::{
+        marketmap::v1::{MarketMap, MarketResponse, MarketmapQuerier},
+        oracle::v1::{GetAllCurrencyPairsResponse, GetPriceResponse, OracleQuerier},
+        types::v1::CurrencyPair,
+    },
 };
-use neutron_sdk::proto_types::cosmos::base::query::v1beta1::PageRequest;
-
-use neutron_sdk::bindings::dex::msg::DexMsg;
-use neutron_sdk::bindings::dex::types::LimitOrderType;
-use neutron_sdk::proto_types::neutron::dex;
-use neutron_sdk::proto_types::neutron::dex::tick_liquidity;
-use neutron_sdk::proto_types::neutron::dex::LimitOrderTranche;
-use neutron_sdk::proto_types::neutron::dex::PoolReserves;
-use neutron_sdk::proto_types::neutron::dex::TickLiquidity;
-
-use neutron_sdk::bindings::oracle::types::CurrencyPair;
-use neutron_sdk::bindings::{msg::NeutronMsg, query::NeutronQuery};
-
-pub fn load_config(deps: Deps<NeutronQuery>) -> StdResult<Config> {
-    CONFIG.load(deps.storage)
-}
 
 pub fn sort_token_data_and_get_pair_id_str(
     token0: &TokenData,
@@ -51,45 +36,33 @@ pub fn sort_token_data_and_get_pair_id_str(
     )
 }
 
-pub fn query_oracle_price(
-    deps: &Deps<NeutronQuery>,
-    pair: &CurrencyPair,
-) -> ContractResult<GetPriceResponse> {
-    let oracle_price_query: OracleQuery = OracleQuery::GetPrice {
-        currency_pair: pair.clone(),
-    };
-    let oracle_price_response: GetPriceResponse = deps.querier.query(&oracle_price_query.into())?;
-    Ok(oracle_price_response)
+pub fn query_oracle_price(deps: &Deps, pair: &CurrencyPair) -> ContractResult<GetPriceResponse> {
+    let querier = OracleQuerier::new(&deps.querier);
+    let price: GetPriceResponse = querier.get_price(Some(pair.clone()))?;
+    Ok(price)
 }
 
-pub fn query_marketmap_market(
-    deps: &Deps<NeutronQuery>,
-    pair: &CurrencyPair,
-) -> ContractResult<MarketResponse> {
-    let marketmap_market_query: MarketMapQuery = MarketMapQuery::Market {
-        currency_pair: pair.clone(),
-    };
-    let marketmap_market_response: MarketResponse =
-        deps.querier.query(&marketmap_market_query.into())?;
-    Ok(marketmap_market_response)
+pub fn query_marketmap_market(deps: &Deps, pair: &CurrencyPair) -> ContractResult<MarketResponse> {
+    let querier = MarketmapQuerier::new(&deps.querier);
+    let market_response: MarketResponse = querier.market(Some(pair.clone()))?;
+    Ok(market_response)
 }
 
-pub fn query_oracle_currency_pairs(deps: &Deps<NeutronQuery>) -> ContractResult<Vec<CurrencyPair>> {
-    let oracle_currency_pairs_query: OracleQuery = OracleQuery::GetAllCurrencyPairs {};
+pub fn query_oracle_currency_pairs(deps: &Deps) -> ContractResult<Vec<CurrencyPair>> {
+    let querier = OracleQuerier::new(&deps.querier);
     let oracle_currency_pairs_response: GetAllCurrencyPairsResponse =
-        deps.querier.query(&oracle_currency_pairs_query.into())?;
+        querier.get_all_currency_pairs()?;
     Ok(oracle_currency_pairs_response.currency_pairs)
 }
 
-pub fn query_marketmap_market_map(deps: &Deps<NeutronQuery>) -> ContractResult<MarketMap> {
-    let marketmap_currency_pairs_query: MarketMapQuery = MarketMapQuery::MarketMap {};
-    let marketmap_currency_pairs_response: MarketMapResponse =
-        deps.querier.query(&marketmap_currency_pairs_query.into())?;
-    Ok(marketmap_currency_pairs_response.market_map)
+pub fn query_marketmap_market_map(deps: &Deps) -> ContractResult<MarketMap> {
+    let querier = MarketmapQuerier::new(&deps.querier);
+    let marketmap_currency_pairs_response = querier.market_map()?;
+    Ok(marketmap_currency_pairs_response.market_map.unwrap())
 }
 
 pub fn validate_market(
-    deps: &Deps<NeutronQuery>,
+    deps: &Deps,
     env: &Env,
     pair: &CurrencyPair,
     max_blocks_old: u64,
@@ -103,7 +76,7 @@ pub fn validate_market(
     let price_response = query_oracle_price(deps, pair)?;
     validate_market_supported_xoracle(deps, &pair, None)?;
     validate_market_supported_xmarketmap(deps, &pair, None)?;
-    validate_market_enabled(deps, &pair, None)?;
+    //validate_market_enabled(deps, &pair, None)?;
     validate_price_recent(
         deps,
         env,
@@ -116,7 +89,7 @@ pub fn validate_market(
 }
 
 pub fn validate_price_recent(
-    deps: &Deps<NeutronQuery>,
+    deps: &Deps,
     env: &Env,
     pair: &CurrencyPair,
     max_blocks_old: u64,
@@ -128,50 +101,49 @@ pub fn validate_price_recent(
         None => query_oracle_price(deps, &pair)?,
     };
 
-    match oracle_price_response.price.block_height {
-        Some(block_height) => {
-            if (current_block_height - block_height) > max_blocks_old {
-                return Err(ContractError::PriceTooOld {
-                    symbol: pair.base.clone(),
-                    quote: pair.quote.clone(),
-                    max_blocks: max_blocks_old,
-                });
-            }
-        }
-        None => {
-            return Err(ContractError::PriceAgeUnavailable {
-                symbol: pair.base.clone(),
-                quote: pair.quote.clone(),
-            });
-        }
-    }
-
-    Ok(Response::new())
-}
-
-pub fn validate_market_enabled(
-    deps: &Deps<NeutronQuery>,
-    pair: &CurrencyPair,
-    marketmap_market_response: Option<MarketResponse>,
-) -> ContractResult<Response> {
-    let marketmap_market_response = match marketmap_market_response {
-        Some(response) => response,
-        None => query_marketmap_market(deps, &pair)?,
-    };
-
-    if !marketmap_market_response.market.ticker.enabled {
-        return Err(ContractError::UnsupportedMarket {
+    let price: neutron_std::types::slinky::oracle::v1::QuotePrice = oracle_price_response
+        .price
+        .ok_or_else(|| ContractError::PriceNotAvailable {
             symbol: pair.base.clone(),
             quote: pair.quote.clone(),
-            location: "x/marketmap".to_string(),
+        })?;
+    if (current_block_height - price.block_height) > max_blocks_old {
+        return Err(ContractError::PriceTooOld {
+            symbol: pair.base.clone(),
+            quote: pair.quote.clone(),
+            max_blocks: max_blocks_old,
         });
     }
 
     Ok(Response::new())
 }
 
+pub fn validate_market_enabled(
+    deps: &Deps,
+    pair: &CurrencyPair,
+    marketmap_market_response: Option<MarketResponse>,
+) -> ContractResult<Response> {
+    let marketmap_market_response: MarketResponse = match marketmap_market_response {
+        Some(response) => response,
+        None => query_marketmap_market(deps, &pair)?,
+    };
+
+    if let Some(market) = marketmap_market_response.market {
+        if let Some(ticker) = market.ticker {
+            if !ticker.enabled {
+                return Err(ContractError::UnsupportedMarket {
+                    symbol: pair.base.clone(),
+                    quote: pair.quote.clone(),
+                    location: "x/marketmap".to_string(),
+                });
+            }
+        }
+    }
+    Ok(Response::new())
+}
+
 pub fn validate_market_supported_xoracle(
-    deps: &Deps<NeutronQuery>,
+    deps: &Deps,
     pair: &CurrencyPair,
     oracle_currency_pairs: Option<Vec<CurrencyPair>>,
 ) -> ContractResult<Response> {
@@ -192,7 +164,7 @@ pub fn validate_market_supported_xoracle(
 }
 
 pub fn validate_market_supported_xmarketmap(
-    deps: &Deps<NeutronQuery>,
+    deps: &Deps,
     pair: &CurrencyPair,
     market_map: Option<MarketMap>,
 ) -> ContractResult<Response> {
@@ -213,7 +185,7 @@ pub fn validate_market_supported_xmarketmap(
 }
 
 pub fn validate_price_not_nil(
-    deps: &Deps<NeutronQuery>,
+    deps: &Deps,
     pair: &CurrencyPair,
     oracle_price_response: Option<GetPriceResponse>,
 ) -> ContractResult<Response> {
@@ -231,12 +203,12 @@ pub fn validate_price_not_nil(
     Ok(Response::new())
 }
 
-pub fn get_prices(deps: Deps<NeutronQuery>, env: Env) -> ContractResult<CombinedPriceResponse> {
-    let config = load_config(deps)?;
+pub fn get_prices(deps: Deps, env: Env) -> ContractResult<CombinedPriceResponse> {
+    let config = CONFIG.load(deps.storage)?;
 
     // Helper function to get price or return 1 if the base is a USD denom
     fn get_price_or_default(
-        deps: &Deps<NeutronQuery>,
+        deps: &Deps,
         env: &Env,
         pair: &CurrencyPair,
         max_blocks_old: u64,
@@ -257,8 +229,12 @@ pub fn get_prices(deps: Deps<NeutronQuery>, env: Env) -> ContractResult<Combined
             Some(price_response.clone()),
         )?;
 
-        // Normalize the price
-        normalize_price(price_response.price.price, price_response.decimals)
+        // Parse the price string to Int128 and normalize
+        let price_int128 = Int128::from_str(&price_response.price.unwrap().price)
+            .map_err(|_| ContractError::InvalidPrice)?;
+        let price = normalize_price(price_int128, price_response.decimals)?;
+
+        Ok(price)
     }
 
     // Get prices for token_0 and token_1, or default to 1 for valid currencies
@@ -289,7 +265,7 @@ pub fn normalize_price(price: Int128, decimals: u64) -> ContractResult<Decimal> 
     }
     let abs_value: u128 = price.i128().abs() as u128;
     Decimal::from_atomics(abs_value, decimals as u32)
-        .map_err(|e| ContractError::DecimalConversionError)
+        .map_err(|_e| ContractError::DecimalConversionError)
 }
 
 fn price_ratio(price_1: Decimal, price_2: Decimal) -> Decimal {
@@ -298,7 +274,7 @@ fn price_ratio(price_1: Decimal, price_2: Decimal) -> Decimal {
 
 pub fn is_usd_denom(currency: &str) -> bool {
     match currency {
-        "USD" | "USDC" | "USDT" => true,
+        "USD" | "USDC" => true,
         _ => false,
     }
 }
@@ -321,7 +297,7 @@ pub fn int128_to_uint128(i: Int128) -> Result<Uint128, ContractError> {
 
 /// Queries the contract's balance for the specified token denoms
 pub fn query_contract_balance(
-    deps: &DepsMut<NeutronQuery>,
+    deps: &DepsMut,
     env: Env,
     pair_data: PairData,
 ) -> Result<Vec<Coin>, ContractError> {
@@ -349,7 +325,7 @@ pub fn query_contract_balance(
 
 /// Updates the balances in the provided config object.
 pub fn update_contract_balance(
-    deps: &DepsMut<NeutronQuery>,
+    deps: &DepsMut,
     env: Env,
     config: &mut Config,
 ) -> Result<(), ContractError> {
@@ -357,13 +333,8 @@ pub fn update_contract_balance(
     let balances = query_contract_balance(&deps, env, config.pair_data.clone())?;
 
     // Update the config balances based on the queried balances
-    for coin in balances.iter() {
-        if coin.denom == config.pair_data.token_0.denom {
-            config.balances.token_0.amount = coin.amount;
-        } else if coin.denom == config.pair_data.token_1.denom {
-            config.balances.token_1.amount = coin.amount;
-        }
-    }
+    config.balances.token_0.amount = balances[0].amount;
+    config.balances.token_1.amount = balances[1].amount;
 
     Ok(())
 }
@@ -459,17 +430,16 @@ pub fn get_deposit_data(
 }
 
 pub fn prepare_state(
-    deps: &DepsMut<NeutronQuery>,
+    deps: &DepsMut,
     env: &Env,
     config: &mut Config,
     prices: &CombinedPriceResponse,
     index: i64,
-) -> Result<(Vec<CosmosMsg<NeutronMsg>>, Uint128, Uint128), ContractError> {
-    let mut messages: Vec<CosmosMsg<NeutronMsg>> = vec![];
-    let target_tick_index_0 = index + config.base_fee as i64;
-    let target_tick_index_1 = (index * -1) + config.base_fee as i64;
-    let dex_querier = dex::DexQuerier::new(&deps.querier);
-
+) -> Result<(Vec<CosmosMsg>, Uint128, Uint128), ContractError> {
+    let mut messages: Vec<CosmosMsg> = vec![];
+    let target_tick_index_1 = index + config.base_fee as i64;
+    let target_tick_index_0 = (index * -1) + config.base_fee as i64;
+    let dex_querier = DexQuerier::new(&deps.querier);
 
     let mut token_0_swappable: bool = false;
     let mut token_1_swappable: bool = false;
@@ -487,7 +457,7 @@ pub fn prepare_state(
         }),
     )?;
 
-    let token_1_liquidity_response = dex_querier.tick_liquidity_all(
+    let token_1_liquidity_response: neutron_std::types::neutron::dex::QueryAllTickLiquidityResponse = dex_querier.tick_liquidity_all(
         config.pair_data.pair_id.clone(),
         config.pair_data.token_1.denom.clone(),
         Some(PageRequest {
@@ -499,23 +469,26 @@ pub fn prepare_state(
         }),
     )?;
 
-    // get tick index of cheapest token0 liquidity
+    // get price of cheapest token0 liquidity
     if !token_1_liquidity_response.tick_liquidity.is_empty() {
         let liq: &TickLiquidity = &token_1_liquidity_response.tick_liquidity[0];
         let lowest_tick_index_1: i64;
+        let price_at_tick: Decimal;
         // Handle empty case
         match &liq.liquidity {
-            Some(tick_liquidity::Liquidity::PoolReserves(reserves)) => {
+            Some(Liquidity::PoolReserves(reserves)) => {
                 lowest_tick_index_1 = reserves.key.as_ref().map_or_else(
                     || Err(ContractError::TickIndexDoesNotExist),
                     |key| Ok(key.tick_index_taker_to_maker),
                 )?;
+                price_at_tick = Decimal::from_str(&reserves.price_taker_to_maker).unwrap();
             }
-            Some(tick_liquidity::Liquidity::LimitOrderTranche(tranche)) => {
+            Some(Liquidity::LimitOrderTranche(tranche)) => {
                 lowest_tick_index_1 = tranche.key.as_ref().map_or_else(
                     || Err(ContractError::TickIndexDoesNotExist),
                     |key| Ok(key.tick_index_taker_to_maker),
                 )?;
+                price_at_tick = Decimal::from_str(&tranche.price_taker_to_maker).unwrap();
             }
             None => {
                 return Err(ContractError::LiquidityNotFound);
@@ -531,10 +504,10 @@ pub fn prepare_state(
         // assume tick_index_0 = 10631 -> Price = 0.345402 -> 10 NTRN * 0.345402 = 3.45402 USDC || 10USDC / 0.345402 = 28.951 NTRN worth of USDC
         // assume tick_index_0 = 10691 -> Price = 0.343336 -> 10 NTRN * 0.34333571534 = 3.4333571534 USDC || 10USDC / 0.34333571534 = 29.126 NTRN worth of USDC
 
-        // if I try to swap the USDC directly into NTRN using the available liquidity, I'll get: 
+        // if I try to swap the USDC directly into NTRN using the available liquidity, I'll get:
         // Price: 2.9126 -> 10 * 2.9126 = 29.126 NTRN.
         // since 28.951 < 29.126, It would be chepaer to swap at current price than place liquidity : B.E.L.
-        // if target_deposit_tick_index_0 < tick_index * -1 
+        // if target_deposit_tick_index_0 < tick_index * -1
         if target_tick_index_0 <= lowest_tick_index_1 * -1 {
             token_0_swappable = true;
         }
@@ -546,13 +519,13 @@ pub fn prepare_state(
         let lowest_tick_index_0: i64;
         // Handle empty case
         match &liq.liquidity {
-            Some(tick_liquidity::Liquidity::PoolReserves(reserves)) => {
+            Some(Liquidity::PoolReserves(reserves)) => {
                 lowest_tick_index_0 = reserves.key.as_ref().map_or_else(
                     || Err(ContractError::TickIndexDoesNotExist),
                     |key| Ok(key.tick_index_taker_to_maker),
                 )?;
             }
-            Some(tick_liquidity::Liquidity::LimitOrderTranche(tranche)) => {
+            Some(Liquidity::LimitOrderTranche(tranche)) => {
                 lowest_tick_index_0 = tranche.key.as_ref().map_or_else(
                     || Err(ContractError::TickIndexDoesNotExist),
                     |key| Ok(key.tick_index_taker_to_maker),
@@ -562,122 +535,137 @@ pub fn prepare_state(
                 return Err(ContractError::LiquidityNotFound);
             }
         }
-        
+
         if target_tick_index_1 <= lowest_tick_index_0 * -1 {
-            token_0_swappable = true;
+            token_1_swappable = true;
         }
     }
-
 
     let mut swapped_amount_0: Uint128 = Uint128::zero();
     let mut gained_amount_0: Uint128 = Uint128::zero();
     let mut swapped_amount_1: Uint128 = Uint128::zero();
     let mut gained_amount_1: Uint128 = Uint128::zero();
 
+  
+
     if (token_0_swappable) {
+        let msg: MsgPlaceLimitOrder = MsgPlaceLimitOrder {
+            creator: env.contract.address.to_string(),
+            min_average_sell_price: None, 
+            receiver: env.contract.address.to_string(),
+            token_in: config.pair_data.token_0.denom.clone(),
+            token_out: config.pair_data.token_1.denom.clone(),
+            tick_index_in_to_out: target_tick_index_0 + 2,
+            amount_in: swapped_amount_0.to_string(),
+            order_type: LimitOrderType::ImmediateOrCancel.into(),
+            expiration_time: None,
+            max_amount_out: None,
+            // TODO: make this an option
+            limit_sell_price: None
+        };
         // TODO: ensure autoswap is enabled and responce includes the total pricing.
-        let token_0_swap_simulation_result = dex_querier.estimate_place_limit_order(
-            env.contract.address.to_string(),
-            env.contract.address.to_string(),
-            config.pair_data.token_0.denom.clone(),
-            config.pair_data.token_1.denom.clone(),
-            target_tick_index_0 + 2,
-            config.balances.token_0.amount.to_string(),
-            // TODO: get enum notation
-            2,
-            None,
-            "".to_string(),
-        )?;
+        let token_0_swap_simulation_result = dex_querier.simulate_place_limit_order(Some(msg))?;
 
         // get the amount of token 0 the limit order immediately used
-        swapped_amount_0 = token_0_swap_simulation_result
-            .swap_in_coin
+        swapped_amount_0 = token_0_swap_simulation_result.clone()
+            .resp
+            .and_then(|resp| resp.taker_coin_in)
             .and_then(|coin| Uint128::from_str(&coin.amount).ok())
             .unwrap_or(Uint128::zero());
         // get the amount of token1 that the limit order immediatly produced
         // Q: Does this correctly account for auto-swap pricing? i.e autoswapping through multiple orders
         gained_amount_1 = token_0_swap_simulation_result
-            .swap_out_coin
+            .resp
+            .and_then(|resp| resp.taker_coin_out)
             .and_then(|coin| Uint128::from_str(&coin.amount).ok())
             .unwrap_or(Uint128::zero());
     }
 
     if (token_1_swappable) {
-        // estimate placing a limit order
-        let token_1_swap_simulation_result = dex_querier.estimate_place_limit_order(
-            env.contract.address.to_string(),
-            env.contract.address.to_string(),
-            config.pair_data.token_1.denom.clone(),
-            config.pair_data.token_0.denom.clone(),
-            target_tick_index_1 + 2,
-            config.balances.token_1.amount.to_string(),
-            2,
-            None,
+
+        let msg: MsgPlaceLimitOrder = MsgPlaceLimitOrder {
+            creator: env.contract.address.to_string(),
+            min_average_sell_price: None, 
+            receiver: env.contract.address.to_string(),
+            token_in: config.pair_data.token_1.denom.clone(),
+            token_out: config.pair_data.token_0.denom.clone(),
+            tick_index_in_to_out: target_tick_index_0 + 2,
+            amount_in: swapped_amount_1.to_string(),
+            order_type: LimitOrderType::ImmediateOrCancel.into(),
+            expiration_time: None,
+            max_amount_out: None,
             // TODO: make this an option
-            "".to_string(),
-        )?;
+            limit_sell_price: None
+        };
+        // TODO: ensure autoswap is enabled and responce includes the total pricing.
+        let token_1_swap_simulation_result = dex_querier.simulate_place_limit_order(Some(msg))?;
 
         // get the amount of token 1 the limit order immediately used
-        swapped_amount_1 = token_1_swap_simulation_result
-            .swap_in_coin
+        swapped_amount_1 = token_1_swap_simulation_result.clone()
+            .resp
+            .and_then(|resp| resp.taker_coin_in)
             .and_then(|coin| Uint128::from_str(&coin.amount).ok())
             .unwrap_or(Uint128::zero());
-        // get the amount of token 0 that the limit order immediatly produced
+        // get the amount of token 0 that the limit order immediately produced
         gained_amount_0 = token_1_swap_simulation_result
-            .swap_out_coin
+            .resp
+            .and_then(|resp| resp.taker_coin_out)
             .and_then(|coin| Uint128::from_str(&coin.amount).ok())
             .unwrap_or(Uint128::zero());
     }
-
 
     // let limit_sell_price_0: Decimal = prices.token_0_price * Decimal::percent(120);
     // let limit_sell_price_1: Decimal = prices.token_1_price * Decimal::percent(120);
 
     if swapped_amount_0 > Uint128::zero() {
-        let limit_order_msg = DexMsg::PlaceLimitOrder {
+        let limit_order_msg = Into::<CosmosMsg>::into(MsgPlaceLimitOrder {
+            creator: env.contract.address.to_string(),
+            min_average_sell_price: None, 
             receiver: env.contract.address.to_string(),
             token_in: config.pair_data.token_0.denom.clone(),
             token_out: config.pair_data.token_1.denom.clone(),
             tick_index_in_to_out: target_tick_index_0 + 2,
-            amount_in: swapped_amount_0,
-            order_type: LimitOrderType::ImmediateOrCancel,
+            amount_in: swapped_amount_0.to_string(),
+            order_type: LimitOrderType::ImmediateOrCancel.into(),
             expiration_time: None,
             max_amount_out: None,
             // TODO: make this an option
-            limit_sell_price: "".to_string(),
-        };
+            limit_sell_price: None
+        });
 
-        messages.push(CosmosMsg::Custom(NeutronMsg::Dex(limit_order_msg)));
+        messages.push(limit_order_msg);
 
         config.balances.token_0.amount = config
-        .balances
-        .token_0
-        .amount
-        .checked_sub(swapped_amount_0)
-        .unwrap_or_default();
+            .balances
+            .token_0
+            .amount
+            .checked_sub(swapped_amount_0)
+            .unwrap_or_default();
     }
     if swapped_amount_1 > Uint128::zero() {
-        let limit_order_msg = DexMsg::PlaceLimitOrder {
+        let limit_order_msg = Into::<CosmosMsg>::into(MsgPlaceLimitOrder {
+            creator: env.contract.address.to_string(),
+            min_average_sell_price: None, 
             receiver: env.contract.address.to_string(),
             token_in: config.pair_data.token_1.denom.clone(),
             token_out: config.pair_data.token_0.denom.clone(),
             tick_index_in_to_out: target_tick_index_1 + 2,
-            amount_in: swapped_amount_1,
-            order_type: LimitOrderType::ImmediateOrCancel,
+            amount_in: swapped_amount_1.to_string(),
+            order_type: LimitOrderType::ImmediateOrCancel.into(),
             expiration_time: None,
             max_amount_out: None,
             // TODO: make this an option
-            limit_sell_price: "".to_string(),
-        };
+            limit_sell_price: None
+        });
 
-        messages.push(CosmosMsg::Custom(NeutronMsg::Dex(limit_order_msg)));
+        messages.push(limit_order_msg);
 
         config.balances.token_1.amount = config
-        .balances
-        .token_1
-        .amount
-        .checked_sub(swapped_amount_1)
-        .unwrap_or_default();
+            .balances
+            .token_1
+            .amount
+            .checked_sub(swapped_amount_1)
+            .unwrap_or_default();
     }
     Ok((messages, gained_amount_0, gained_amount_1))
 }

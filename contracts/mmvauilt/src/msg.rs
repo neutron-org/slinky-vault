@@ -2,17 +2,7 @@ use crate::{
     error::{ContractError, ContractResult},
     state::TokenData,
 };
-
-// use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Coin, Decimal, Response, Uint128};
-use neutron_sdk::bindings::marketmap::query::{MarketMapQuery, MarketMapResponse, MarketResponse};
-use neutron_sdk::bindings::oracle::types::CurrencyPair;
-use neutron_sdk::bindings::{msg::NeutronMsg, query::NeutronQuery};
-
-use cosmwasm_std::Uint64;
-use neutron_sdk::bindings::oracle::query::{
-    GetAllCurrencyPairsResponse, GetPriceResponse, GetPricesResponse, OracleQuery,
-};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -89,7 +79,7 @@ impl InstantiateMsg {
         Ok(Response::new())
     }
     pub fn validate_base_deposit_percentage(percentage: u64) -> ContractResult<Response> {
-        if percentage < 0 || percentage > 100 {
+        if percentage > 100 {
             return Err(ContractError::InvalidDepositPercentage { percentage });
         }
 
@@ -156,11 +146,6 @@ pub enum ExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetPrice {
-        base_symbol: String,
-        quote_currency: String,
-        max_blocks_old: Uint64,
-    },
     GetFormated {},
     GetDeposits {},
 }

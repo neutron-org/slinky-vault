@@ -1,20 +1,6 @@
-use cosmwasm_std::{Addr, Int64};
+use cosmwasm_std::{Addr, Coin};
 use cw_storage_plus::Item;
-use neutron_sdk::bindings::oracle::types::CurrencyPair;
-use crate::{
-    error::{ContractError, ContractResult},
-};
-
-// use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Coin, Response};
-use neutron_sdk::bindings::marketmap::query::{MarketMapQuery, MarketMapResponse, MarketResponse};
-use neutron_sdk::bindings::{msg::NeutronMsg, query::NeutronQuery};
-
-
-use neutron_sdk::bindings::oracle::query::{
-    GetAllCurrencyPairsResponse, GetPriceResponse, GetPricesResponse, OracleQuery,
-};
-use cosmwasm_std::Uint64;
+use neutron_std::types::slinky::types::v1::CurrencyPair;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

@@ -1,24 +1,13 @@
-use crate::error::ContractError;
+use crate::error::{ContractError, ContractResult};
 use crate::execute::*;
-use crate::msg::{CombinedPriceResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use crate::query::*;
-use crate::state::{Balances, Config, PairData, TokenData, CONFIG};
+use crate::state::{Balances, Config, PairData, CONFIG};
 use crate::utils::*;
-
 use cosmwasm_std::{
-    attr, entry_point, to_json_binary, Binary, Coin, Deps, DepsMut, Env, Int128, MessageInfo,
-    Response, StdResult, Uint128, Uint64,
+    attr, entry_point, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
 };
 use cw2::set_contract_version;
-
-pub type ContractResult<T> = core::result::Result<T, ContractError>;
-use neutron_sdk::bindings::marketmap::query::{MarketMapQuery, MarketMapResponse, MarketResponse};
-use neutron_sdk::bindings::marketmap::types::MarketMap;
-use neutron_sdk::bindings::oracle::query::{
-    GetAllCurrencyPairsResponse, GetPriceResponse, GetPricesResponse, OracleQuery,
-};
-use neutron_sdk::bindings::oracle::types::CurrencyPair;
-use neutron_sdk::bindings::{msg::NeutronMsg, query::NeutronQuery};
 
 ///////////////
 /// MIGRATE ///
@@ -38,9 +27,9 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    deps: DepsMut<NeutronQuery>,
+    deps: DepsMut,
     _env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> ContractResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -101,11 +90,11 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    deps: DepsMut<NeutronQuery>,
+    deps: DepsMut,
     _env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
-) -> Result<Response<NeutronMsg>, ContractError> {
+) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Deposit { .. } => deposit(deps, _env, info),
         ExecuteMsg::Withdraw { .. } => {
@@ -137,18 +126,20 @@ pub fn execute(
 /////////////
 
 #[entry_point]
-pub fn query(deps: Deps<NeutronQuery>, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
     match msg {
-        QueryMsg::GetPrice {
-            base_symbol,
-            quote_currency,
-            max_blocks_old,
-        } => query_recent_valid_price(deps, _env, base_symbol, quote_currency, max_blocks_old), // handle other queries
         QueryMsg::GetFormated {} => query_recent_valid_prices_formatted(deps, _env),
         QueryMsg::GetDeposits {} => q_dex_deposit(deps, _env),
     }
 }
 
-pub fn QuerySlinkyPrice(deps: Deps, _env: Env) -> ContractResult<Binary> {
-    Err(ContractError::BadTokenA)
+/////////////
+/// REPLY ///
+/////////////
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+    match msg.id {
+        id => handle_reply(deps, env, msg.result, id),
+    }
 }

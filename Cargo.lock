@@ -708,6 +708,7 @@ dependencies = [
  "cw-storage-plus",
  "cw2",
  "neutron-sdk",
+ "neutron-std",
  "schemars",
  "serde",
  "serde_json",
@@ -725,7 +726,7 @@ dependencies = [
  "cosmos-sdk-proto",
  "cosmwasm-schema",
  "cosmwasm-std",
- "neutron-std-derive",
+ "neutron-std-derive 0.20.1 (git+https://github.com/neutron-org/neutron-sdk?branch=main)",
  "prost",
  "prost-types",
  "protobuf",
@@ -737,6 +738,42 @@ dependencies = [
  "speedate",
  "tendermint-proto",
  "thiserror",
+]
+
+[[package]]
+name = "neutron-std"
+version = "4.2.2-rc"
+source = "git+https://github.com/neutron-org/neutron-std?branch=feat/respect-gogoproto-nullable#840ec1a23c775541685939558f2504f985607e3f"
+dependencies = [
+ "bech32 0.9.1",
+ "chrono",
+ "cosmos-sdk-proto",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "neutron-std-derive 0.20.1 (git+https://github.com/neutron-org/neutron-std?branch=feat/respect-gogoproto-nullable)",
+ "prost",
+ "prost-types",
+ "protobuf",
+ "schemars",
+ "serde",
+ "serde-cw-value",
+ "serde-json-wasm",
+ "serde_json",
+ "speedate",
+ "tendermint-proto",
+ "thiserror",
+]
+
+[[package]]
+name = "neutron-std-derive"
+version = "0.20.1"
+source = "git+https://github.com/neutron-org/neutron-std?branch=feat/respect-gogoproto-nullable#840ec1a23c775541685939558f2504f985607e3f"
+dependencies = [
+ "itertools 0.10.5",
+ "proc-macro2",
+ "prost-types",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
