@@ -2,7 +2,9 @@ use crate::{
     error::{ContractError, ContractResult},
     state::TokenData,
 };
-use cosmwasm_std::{Coin, Decimal, Response, Uint128};
+use cosmwasm_std::{Coin, Response, Uint128};
+use neutron_std::types::neutron::util::precdec::PrecDec;
+use prost::Message;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -30,6 +32,9 @@ pub struct InstantiateMsg {
     pub max_block_old: u64,
     pub base_fee: u64,
     pub base_deposit_percentage: u64,
+    pub ambient_fee: u64,
+    pub deposit_ambient: bool,
+    pub deposit_cap: Uint128,
 }
 
 impl InstantiateMsg {
@@ -46,7 +51,7 @@ impl InstantiateMsg {
             "token_b symbol (base)".to_string(),
         )?;
 
-        if self.max_block_old <= 0 {
+        if self.max_block_old > 0 {
             return Err(ContractError::MalformedInput {
                 input: "max_block_stale".to_string(),
                 reason: "must be >=1".to_string(),
@@ -119,7 +124,7 @@ impl InstantiateMsg {
     }
     pub fn check_empty(&self, input: String, kind: String) -> ContractResult<()> {
         if input.is_empty() {
-            return Err(ContractError::EmptyValue { kind: kind });
+            return Err(ContractError::EmptyValue { kind });
         }
         Ok(())
     }
@@ -131,10 +136,12 @@ pub enum ExecuteMsg {
     // deposit funds to use for market making
     Deposit {},
     // withdraw free unutilised funds
-    Withdraw {},
+    Withdraw { amount: Uint128 },
     // // cancels and withdraws all active and filled Limit orders
     DexDeposit {},
     DexWithdrawal {},
+    // create the LP token
+    CreateToken {},
     // // pauses all deposit functionality
     // Pause {},
     // // helper to atomically purge and withdraw
@@ -148,13 +155,14 @@ pub enum ExecuteMsg {
 pub enum QueryMsg {
     GetFormated {},
     GetDeposits {},
+    GetConfig {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct CombinedPriceResponse {
-    pub token_0_price: Decimal,
-    pub token_1_price: Decimal,
-    pub price_0_to_1: Decimal,
+    pub token_0_price: PrecDec,
+    pub token_1_price: PrecDec,
+    pub price_0_to_1: PrecDec,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
@@ -163,4 +171,12 @@ pub struct DepositResult {
     pub amount1: Uint128,
     pub tick_index: i64,
     pub fee: u64,
+}
+
+#[derive(Message, Clone, PartialEq)]
+pub struct WithdrawPayload {
+    #[prost(string, tag = "1")]
+    pub sender: String,
+    #[prost(string, tag = "2")]
+    pub amount: String,
 }

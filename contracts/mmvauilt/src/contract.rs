@@ -1,6 +1,6 @@
 use crate::error::{ContractError, ContractResult};
 use crate::execute::*;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload};
 use crate::query::*;
 use crate::state::{Balances, Config, PairData, CONFIG};
 use crate::utils::*;
@@ -8,6 +8,8 @@ use cosmwasm_std::{
     attr, entry_point, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
 };
 use cw2::set_contract_version;
+use prost::Message;
+use std::str::FromStr;
 
 ///////////////
 /// MIGRATE ///
@@ -63,7 +65,12 @@ pub fn instantiate(
         balances,
         base_fee: msg.base_fee,
         base_deposit_percentage: msg.base_deposit_percentage,
+        ambient_fee: msg.ambient_fee,
+        deposit_ambient: msg.deposit_ambient,
+        lp_denom: "".to_string(),
+        total_shares: Uint128::zero(),
         owner,
+        deposit_cap: msg.deposit_cap,
     };
 
     // PAIRDATA.save(deps.storage, &pool_data)?;
@@ -97,12 +104,12 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Deposit { .. } => deposit(deps, _env, info),
-        ExecuteMsg::Withdraw { .. } => {
+        ExecuteMsg::Withdraw { amount } => {
             // Prevent tokens from being sent with the Withdraw message
             if !info.funds.is_empty() {
                 return Err(ContractError::FundsNotAllowed);
             }
-            withdraw(deps, _env, info)
+            withdraw(deps, _env, info, amount)
         }
         ExecuteMsg::DexDeposit { .. } => {
             // Prevent tokens from being sent with the Withdraw message
@@ -118,6 +125,13 @@ pub fn execute(
             }
             dex_withdrawal(deps, _env, info)
         }
+        ExecuteMsg::CreateToken { .. } => {
+            // Prevent tokens from being sent with the Withdraw message
+            if !info.funds.is_empty() {
+                return Err(ContractError::FundsNotAllowed);
+            }
+            execute_create_token(deps, _env, info)
+        }
     }
 }
 
@@ -130,6 +144,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
     match msg {
         QueryMsg::GetFormated {} => query_recent_valid_prices_formatted(deps, _env),
         QueryMsg::GetDeposits {} => q_dex_deposit(deps, _env),
+        QueryMsg::GetConfig {} => query_config(deps, _env),
     }
 }
 
@@ -140,6 +155,27 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
-        id => handle_reply(deps, env, msg.result, id),
+        1 => handle_create_token_reply(deps, msg.result),
+        2 => handle_dex_withdrawal_reply(deps, env, msg.result),
+        3 => {
+            let response = msg.result.clone().into_result().unwrap();
+            // Decode the protobuf payload
+            let payload = WithdrawPayload::decode(
+                response
+                    .msg_responses
+                    .first()
+                    .ok_or(ContractError::NoReplyData)?
+                    .value
+                    .as_slice(),
+            )
+            .map_err(|_| ContractError::ParseError)?;
+
+            // Convert amount string to Uint128
+            let amount =
+                Uint128::from_str(&payload.amount).map_err(|_| ContractError::ParseError)?;
+
+            handle_withdrawal_reply(deps, env, msg.result, amount, payload.sender)
+        }
+        id => Err(ContractError::UnknownReplyId { id }),
     }
 }

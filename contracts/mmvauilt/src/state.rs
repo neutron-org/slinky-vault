@@ -1,13 +1,19 @@
-use cosmwasm_std::{Addr, Coin};
+use cosmwasm_std::{Addr, Coin, Uint128};
 use cw_storage_plus::Item;
 use neutron_std::types::slinky::types::v1::CurrencyPair;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub const CREATE_TOKEN_REPLY_ID: u64 = 1;
+pub const DEX_WITHDRAW_REPLY_ID: u64 = 2;
+pub const WITHDRAW_REPLY_ID: u64 = 3;
+pub const SHARES_MULTIPLIER: u64 = 1000;
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct TokenData {
     pub denom: String,
+    pub decimals: u8,
     pub pair: CurrencyPair,
 }
 
@@ -24,7 +30,7 @@ pub struct PairData {
 #[serde(rename_all = "snake_case")]
 pub struct Balances {
     pub token_0: Coin,
-    pub token_1: Coin
+    pub token_1: Coin,
 }
 
 /// This structure stores the concentrated pair parameters.
@@ -37,7 +43,12 @@ pub struct Config {
     pub balances: Balances,
     pub base_fee: u64,
     pub base_deposit_percentage: u64,
+    pub ambient_fee: u64,
+    pub deposit_ambient: bool,
+    pub lp_denom: String,
+    pub total_shares: Uint128,
     pub owner: Addr,
+    pub deposit_cap: Uint128,
 }
 
 // pub const PAIRDATA: Item<PairData> = Item::new("data");

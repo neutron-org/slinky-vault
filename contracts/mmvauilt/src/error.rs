@@ -1,5 +1,5 @@
-use thiserror::Error;
 use cosmwasm_std::{StdError, Uint128};
+use thiserror::Error;
 
 pub type ContractResult<T> = core::result::Result<T, ContractError>;
 
@@ -14,38 +14,56 @@ pub enum ContractError {
     #[error("BadTokenA")]
     BadTokenA,
 
+    #[error("Failed to decode response data")]
+    DecodingError,
+
+    #[error("No response data from place limit order")]
+    NoResponseData,
+
     #[error("BadTokenB")]
     BadTokenB,
 
     #[error("denom {denom} is not a correct IBC denom: {reason}")]
     InvalidIbcDenom { denom: String, reason: String },
-   
-    #[error( "Market {symbol}, {quote} not found in {location}")]
-    UnsupportedMarket { symbol: String, quote: String, location: String},
 
-    #[error( "Market {symbol}, {quote} not enabled in {location}")]
-    DisabledMarket { symbol: String, quote: String, location: String},
-    
-    #[error( "Market {symbol}, {quote} did not return an block height")]
-    PriceAgeUnavailable { symbol: String, quote: String},
+    #[error("Market {symbol}, {quote} not found in {location}")]
+    UnsupportedMarket {
+        symbol: String,
+        quote: String,
+        location: String,
+    },
+
+    #[error("Market {symbol}, {quote} not enabled in {location}")]
+    DisabledMarket {
+        symbol: String,
+        quote: String,
+        location: String,
+    },
+
+    #[error("Market {symbol}, {quote} did not return an block height")]
+    PriceAgeUnavailable { symbol: String, quote: String },
 
     #[error("Market {symbol}, {quote} did not return a block height")]
     PriceNotAvailable { symbol: String, quote: String },
-    
-    #[error( "Market {symbol}, {quote} returned a nil price")]
-    PriceIsNil { symbol: String, quote: String},
 
-    #[error( "Market {symbol}, {quote} is older than {max_blocks} blocks")]
-    PriceTooOld { symbol: String, quote: String, max_blocks: u64},
+    #[error("Market {symbol}, {quote} returned a nil price")]
+    PriceIsNil { symbol: String, quote: String },
+
+    #[error("Market {symbol}, {quote} is older than {max_blocks} blocks")]
+    PriceTooOld {
+        symbol: String,
+        quote: String,
+        max_blocks: u64,
+    },
 
     #[error("input for {input} is invalid: {reason}")]
     MalformedInput { input: String, reason: String },
 
     #[error("Only USD quote currency supported. Quote Currencies provided: {quote0}, {quote1}")]
-    OnlySupportUsdQuote { quote0: String, quote1: String},
+    OnlySupportUsdQuote { quote0: String, quote1: String },
 
     #[error("Invalid DEX deposit base fee: {fee}")]
-    InvalidBaseFee  { fee: u64 },
+    InvalidBaseFee { fee: u64 },
 
     #[error("Invalid deposit percentage: {percentage}. Normal range is [0-100]")]
     InvalidDepositPercentage { percentage: u64 },
@@ -65,6 +83,12 @@ pub enum ContractError {
     #[error("Attempted deposit of invalid token")]
     InvalidToken,
 
+    #[error("Attempted deposit of invalid token amount")]
+    InvalidTokenAmount,
+
+    #[error("LP token already created")]
+    TokenAlreadyCreated,
+
     #[error("Msg sender must be the contract owner")]
     Unauthorized,
 
@@ -80,8 +104,20 @@ pub enum ContractError {
     #[error("Price is invalid")]
     InvalidPrice,
 
+    #[error("No reply data")]
+    NoReplyData,
+
+    #[error("Failed to parse uint128")]
+    ParseError,
+
+    #[error("Insufficient funds for withdrawal")]
+    InsufficientFundsForWithdrawal,
+
     #[error("Insufficient balance for Deposit: available: {available}, required: {required}")]
-    InsufficientFunds { available: Uint128, required: Uint128},
+    InsufficientFunds {
+        available: Uint128,
+        required: Uint128,
+    },
 
     #[error("Liquidity exists but tick index was not returned")]
     TickIndexDoesNotExist,
@@ -89,5 +125,6 @@ pub enum ContractError {
     #[error("Liquidity exists but cannot be retreived")]
     LiquidityNotFound,
 
+    #[error("Unknown reply id: {id}")]
+    UnknownReplyId { id: u64 },
 }
-

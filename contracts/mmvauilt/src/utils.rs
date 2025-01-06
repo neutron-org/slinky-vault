@@ -1,19 +1,17 @@
 use std::str::FromStr;
 
 use crate::error::{ContractError, ContractResult};
-use crate::msg::{
-CombinedPriceResponse, DepositResult};
-use crate::state::{Config, PairData, TokenData, CONFIG};
+use crate::msg::{CombinedPriceResponse, DepositResult};
+use crate::state::{Config, PairData, TokenData, CONFIG, SHARES_MULTIPLIER};
 use cosmwasm_std::{
-    BalanceResponse, BankQuery, Coin, CosmosMsg,
-    Decimal, Deps, DepsMut, Env, Int128, QueryRequest, Response,
-    Uint128
+    BalanceResponse, BankQuery, Coin, CosmosMsg, Deps, DepsMut, Env, Int128, QueryRequest,
+    Response, SubMsgResponse, Uint128,
 };
+use neutron_std::types::neutron::util::precdec::PrecDec;
+use neutron_std::types::osmosis::tokenfactory::v1beta1::MsgCreateDenomResponse;
 use neutron_std::types::{
-    cosmos::base::query::v1beta1::PageRequest,
     neutron::dex::{
-        DexQuerier, LimitOrderType, MsgPlaceLimitOrder, TickLiquidity,
-        tick_liquidity::Liquidity,
+        DepositOptions, DexQuerier, MsgDeposit, MsgWithdrawal, MsgWithdrawalResponse, QueryAllUserDepositsResponse,
     },
     slinky::{
         marketmap::v1::{MarketMap, MarketResponse, MarketmapQuerier},
@@ -21,6 +19,8 @@ use neutron_std::types::{
         types::v1::CurrencyPair,
     },
 };
+
+use prost::Message;
 
 pub fn sort_token_data_and_get_pair_id_str(
     token0: &TokenData,
@@ -74,17 +74,17 @@ pub fn validate_market(
 
     // get price response here to avoid querying twice on recent and not_nil checks
     let price_response = query_oracle_price(deps, pair)?;
-    validate_market_supported_xoracle(deps, &pair, None)?;
-    validate_market_supported_xmarketmap(deps, &pair, None)?;
+    validate_market_supported_xoracle(deps, pair, None)?;
+    validate_market_supported_xmarketmap(deps, pair, None)?;
     //validate_market_enabled(deps, &pair, None)?;
     validate_price_recent(
         deps,
         env,
-        &pair,
+        pair,
         max_blocks_old,
         Some(price_response.clone()),
     )?;
-    validate_price_not_nil(deps, &pair, Some(price_response.clone()))?;
+    validate_price_not_nil(deps, pair, Some(price_response.clone()))?;
     Ok(Response::new())
 }
 
@@ -98,7 +98,7 @@ pub fn validate_price_recent(
     let current_block_height: u64 = env.block.height;
     let oracle_price_response = match oracle_price_response {
         Some(response) => response,
-        None => query_oracle_price(deps, &pair)?,
+        None => query_oracle_price(deps, pair)?,
     };
 
     let price: neutron_std::types::slinky::oracle::v1::QuotePrice = oracle_price_response
@@ -125,7 +125,7 @@ pub fn validate_market_enabled(
 ) -> ContractResult<Response> {
     let marketmap_market_response: MarketResponse = match marketmap_market_response {
         Some(response) => response,
-        None => query_marketmap_market(deps, &pair)?,
+        None => query_marketmap_market(deps, pair)?,
     };
 
     if let Some(market) = marketmap_market_response.market {
@@ -173,7 +173,7 @@ pub fn validate_market_supported_xmarketmap(
         None => query_marketmap_market_map(deps)?,
     };
     let key: String = format!("{}/{}", pair.base, pair.quote);
-    if map.markets.contains_key(&key) == false {
+    if !map.markets.contains_key(&key) {
         return Err(ContractError::UnsupportedMarket {
             symbol: pair.base.clone(),
             quote: pair.quote.clone(),
@@ -191,7 +191,7 @@ pub fn validate_price_not_nil(
 ) -> ContractResult<Response> {
     let oracle_price_response = match oracle_price_response {
         Some(response) => response,
-        None => query_oracle_price(deps, &pair)?,
+        None => query_oracle_price(deps, pair)?,
     };
 
     if oracle_price_response.nonce == 0 {
@@ -212,10 +212,10 @@ pub fn get_prices(deps: Deps, env: Env) -> ContractResult<CombinedPriceResponse>
         env: &Env,
         pair: &CurrencyPair,
         max_blocks_old: u64,
-    ) -> ContractResult<Decimal> {
+    ) -> ContractResult<PrecDec> {
         // Check if the pair's base is USD denom
         if is_usd_denom(&pair.base) {
-            return Ok(Decimal::one());
+            return Ok(PrecDec::one());
         }
 
         // Query the oracle for the price
@@ -255,7 +255,7 @@ pub fn get_prices(deps: Deps, env: Env) -> ContractResult<CombinedPriceResponse>
     Ok(res)
 }
 
-pub fn normalize_price(price: Int128, decimals: u64) -> ContractResult<Decimal> {
+pub fn normalize_price(price: Int128, decimals: u64) -> ContractResult<PrecDec> {
     // Ensure decimals does not exceed u32::MAX
     if decimals > u32::MAX as u64 {
         return Err(ContractError::TooManyDecimals);
@@ -263,20 +263,17 @@ pub fn normalize_price(price: Int128, decimals: u64) -> ContractResult<Decimal> 
     if price < Int128::zero() {
         return Err(ContractError::PriceIsNegative);
     }
-    let abs_value: u128 = price.i128().abs() as u128;
-    Decimal::from_atomics(abs_value, decimals as u32)
+    let abs_value: u128 = price.i128().unsigned_abs();
+    PrecDec::from_atomics(abs_value, decimals as u32)
         .map_err(|_e| ContractError::DecimalConversionError)
 }
 
-fn price_ratio(price_1: Decimal, price_2: Decimal) -> Decimal {
+fn price_ratio(price_1: PrecDec, price_2: PrecDec) -> PrecDec {
     price_1 / price_2
 }
 
 pub fn is_usd_denom(currency: &str) -> bool {
-    match currency {
-        "USD" | "USDC" => true,
-        _ => false,
-    }
+    matches!(currency, "USD" | "USDC")
 }
 
 pub fn uint128_to_int128(u: Uint128) -> Result<Int128, ContractError> {
@@ -330,7 +327,7 @@ pub fn update_contract_balance(
     config: &mut Config,
 ) -> Result<(), ContractError> {
     // Query the contract balances for the two tokens
-    let balances = query_contract_balance(&deps, env, config.pair_data.clone())?;
+    let balances = query_contract_balance(deps, env, config.pair_data.clone())?;
 
     // Update the config balances based on the queried balances
     config.balances.token_0.amount = balances[0].amount;
@@ -339,14 +336,17 @@ pub fn update_contract_balance(
     Ok(())
 }
 
-pub fn price_to_tick_index(price: Decimal) -> Result<i64, ContractError> {
+pub fn price_to_tick_index(price: PrecDec) -> Result<i64, ContractError> {
     // Ensure the price is greater than 0
-    if price.is_zero() || price < Decimal::zero() {
+    if price.is_zero() || price < PrecDec::zero() {
         return Err(ContractError::InvalidPrice);
     }
 
-    // Convert Decimal to f64 by dividing the atomic value by the scaling factor
-    let price_f64 = price.atomics().u128() as f64 / 10u128.pow(18) as f64; // 18 is the precision of Decimal
+    // Convert PrecDec to f64
+    let price_f64 = price
+        .to_string()
+        .parse::<f64>()
+        .map_err(|_| ContractError::ConversionError)?;
 
     // Compute the logarithm of the base (1.0001)
     let log_base = 1.0001f64.ln();
@@ -364,27 +364,31 @@ pub fn price_to_tick_index(price: Decimal) -> Result<i64, ContractError> {
 pub fn get_deposit_data(
     total_available_0: Uint128,
     total_available_1: Uint128,
-    expected_amount_0: Uint128,
-    expected_amount_1: Uint128,
     tick_index: i64,
     fee: u64,
     prices: &CombinedPriceResponse,
     base_deposit_percentage: u64,
+    decimals_0: u8,
+    decimals_1: u8,
 ) -> Result<DepositResult, ContractError> {
     // Calculate the base deposit amounts
-    let virtual_total_0 = total_available_0 + expected_amount_0;
-    let virtual_total_1 = total_available_1 + expected_amount_1;
-    let computed_amount_0 = virtual_total_0.multiply_ratio(base_deposit_percentage, 100u128);
-    let computed_amount_1 = virtual_total_1.multiply_ratio(base_deposit_percentage, 100u128);
+    let computed_amount_0 = total_available_0.multiply_ratio(base_deposit_percentage, 100u128);
+    let computed_amount_1 = total_available_1.multiply_ratio(base_deposit_percentage, 100u128);
 
-    // Get the total value of the remaining tokens
-    let value_token_0 =
-        Decimal::from_ratio(virtual_total_0 - computed_amount_0, 1u128) * prices.token_0_price;
-    let value_token_1 =
-        Decimal::from_ratio(virtual_total_1 - computed_amount_1, 1u128) * prices.token_1_price;
+    // Calculate normalized value in USD for token 0
+    let value_token_0 = PrecDec::from_ratio(
+        total_available_0 - computed_amount_0,
+        10u128.pow(decimals_0.into()),
+    ) * prices.token_0_price;
+
+    // Calculate normalized value in USD for token 1
+    let value_token_1 = PrecDec::from_ratio(
+        total_available_1 - computed_amount_1,
+        10u128.pow(decimals_1.into()),
+    ) * prices.token_1_price;
 
     let (final_amount_0, final_amount_1) = if value_token_0 > value_token_1 {
-        let imbalance = (value_token_0 - value_token_1) * Decimal::percent(50);
+        let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(50);
         let additional_token_0 = imbalance / prices.token_0_price;
         (
             computed_amount_0
@@ -393,7 +397,7 @@ pub fn get_deposit_data(
             computed_amount_1,
         )
     } else if value_token_1 > value_token_0 {
-        let imbalance = (value_token_1 - value_token_0) * Decimal::percent(50);
+        let imbalance = (value_token_1 - value_token_0) * PrecDec::percent(50);
         let additional_token_1 = imbalance / prices.token_1_price;
         (
             computed_amount_0,
@@ -429,243 +433,227 @@ pub fn get_deposit_data(
     })
 }
 
-pub fn prepare_state(
+pub fn extract_withdrawal_amounts(
+    result: &SubMsgResponse,
+) -> Result<(Uint128, Uint128), ContractError> {
+    let response_data = result
+        .msg_responses.first()
+        .ok_or(ContractError::NoResponseData)?
+        .value
+        .clone();
+
+    let withdrawal = MsgWithdrawalResponse::decode(response_data.as_slice())
+        .map_err(|_| ContractError::DecodingError)?;
+
+    let amount0 = withdrawal
+        .reserve0_withdrawn
+        .parse::<Uint128>()
+        .map_err(|_| ContractError::DecodingError)?;
+
+    let amount1 = withdrawal
+        .reserve1_withdrawn
+        .parse::<Uint128>()
+        .map_err(|_| ContractError::DecodingError)?;
+
+    Ok((amount0, amount1))
+}
+
+pub fn extract_denom(result: &SubMsgResponse) -> Result<String, ContractError> {
+    let response_data = result
+        .msg_responses.first()
+        .ok_or(ContractError::NoResponseData)?
+        .value
+        .clone();
+
+    let response = MsgCreateDenomResponse::decode(response_data.as_slice())
+        .map_err(|_| ContractError::DecodingError)?;
+
+    let denom = response.new_token_denom;
+
+    Ok(denom)
+}
+pub fn get_deposited_token_amounts(
+    env: Env,
     deps: &DepsMut,
-    env: &Env,
-    config: &mut Config,
-    prices: &CombinedPriceResponse,
-    index: i64,
-) -> Result<(Vec<CosmosMsg>, Uint128, Uint128), ContractError> {
-    let mut messages: Vec<CosmosMsg> = vec![];
-    let target_tick_index_1 = index + config.base_fee as i64;
-    let target_tick_index_0 = (index * -1) + config.base_fee as i64;
+    config: Config,
+) -> Result<(Uint128, Uint128), ContractError> {
     let dex_querier = DexQuerier::new(&deps.querier);
+    // simulate full withdrawal to get the current total token amounts:
+    let res: QueryAllUserDepositsResponse =
+        dex_querier.user_deposits_all(env.contract.address.to_string(), None, true)?;
+    // If there are any active deposits, withdraw all of them
 
-    let mut token_0_swappable: bool = false;
-    let mut token_1_swappable: bool = false;
+    let balances = query_contract_balance(deps, env.clone(), config.pair_data.clone())?;
+    let mut total_amount_0 = balances[0].amount;
+    let mut total_amount_1 = balances[1].amount;
 
-    // querry token 0 liquidity
-    let token_0_liquidity_response = dex_querier.tick_liquidity_all(
-        config.pair_data.pair_id.clone(),
-        config.pair_data.token_0.denom.clone(),
-        Some(PageRequest {
-            key: Vec::new(),
-            limit: 1,
-            reverse: false,
-            count_total: false,
-            offset: 0,
-        }),
-    )?;
-
-    let token_1_liquidity_response: neutron_std::types::neutron::dex::QueryAllTickLiquidityResponse = dex_querier.tick_liquidity_all(
-        config.pair_data.pair_id.clone(),
-        config.pair_data.token_1.denom.clone(),
-        Some(PageRequest {
-            key: Vec::new(),
-            limit: 1,
-            reverse: false,
-            count_total: false,
-            offset: 0,
-        }),
-    )?;
-
-    // get price of cheapest token0 liquidity
-    if !token_1_liquidity_response.tick_liquidity.is_empty() {
-        let liq: &TickLiquidity = &token_1_liquidity_response.tick_liquidity[0];
-        let lowest_tick_index_1: i64;
-        let price_at_tick: Decimal;
-        // Handle empty case
-        match &liq.liquidity {
-            Some(Liquidity::PoolReserves(reserves)) => {
-                lowest_tick_index_1 = reserves.key.as_ref().map_or_else(
-                    || Err(ContractError::TickIndexDoesNotExist),
-                    |key| Ok(key.tick_index_taker_to_maker),
-                )?;
-                price_at_tick = Decimal::from_str(&reserves.price_taker_to_maker).unwrap();
-            }
-            Some(Liquidity::LimitOrderTranche(tranche)) => {
-                lowest_tick_index_1 = tranche.key.as_ref().map_or_else(
-                    || Err(ContractError::TickIndexDoesNotExist),
-                    |key| Ok(key.tick_index_taker_to_maker),
-                )?;
-                price_at_tick = Decimal::from_str(&tranche.price_taker_to_maker).unwrap();
-            }
-            None => {
-                return Err(ContractError::LiquidityNotFound);
-            }
-        }
-        // trying to place 10 token0 liquidity at tick_index_0, so trying to buy token1 at tick_index_0
-        // ASSUME LIQUIDITY EXISTS: 100 USDC and 100 NTRN at given ticks
-        // center tick = -10711
-        // lower Tick token0 (USDC in pool) Index:10731   Price:0.341965  10 NTRN * 0.341965 = 3.41965 USDC || 100USDC / 0.341965 = 292.427588 NTRN worth of USDC
-        // upper tick token1 (NTRN in pool) Index:-10691  Price:2.9126    10 USDC * 2.9126   = 29.126 NTRN  || 100 NTRN / 2.9126 = 34.3333 USDC worth of NTRN
-        // token_0_liquidity_response = 10731
-        // token_1_liquidity_response = -10691
-        // assume tick_index_0 = 10631 -> Price = 0.345402 -> 10 NTRN * 0.345402 = 3.45402 USDC || 10USDC / 0.345402 = 28.951 NTRN worth of USDC
-        // assume tick_index_0 = 10691 -> Price = 0.343336 -> 10 NTRN * 0.34333571534 = 3.4333571534 USDC || 10USDC / 0.34333571534 = 29.126 NTRN worth of USDC
-
-        // if I try to swap the USDC directly into NTRN using the available liquidity, I'll get:
-        // Price: 2.9126 -> 10 * 2.9126 = 29.126 NTRN.
-        // since 28.951 < 29.126, It would be chepaer to swap at current price than place liquidity : B.E.L.
-        // if target_deposit_tick_index_0 < tick_index * -1
-        if target_tick_index_0 <= lowest_tick_index_1 * -1 {
-            token_0_swappable = true;
-        }
-    }
-    // get tick index of cheapest token0 liquidity
-    if !token_0_liquidity_response.tick_liquidity.is_empty() {
-        let liq: &TickLiquidity = &token_0_liquidity_response.tick_liquidity[0];
-
-        let lowest_tick_index_0: i64;
-        // Handle empty case
-        match &liq.liquidity {
-            Some(Liquidity::PoolReserves(reserves)) => {
-                lowest_tick_index_0 = reserves.key.as_ref().map_or_else(
-                    || Err(ContractError::TickIndexDoesNotExist),
-                    |key| Ok(key.tick_index_taker_to_maker),
-                )?;
-            }
-            Some(Liquidity::LimitOrderTranche(tranche)) => {
-                lowest_tick_index_0 = tranche.key.as_ref().map_or_else(
-                    || Err(ContractError::TickIndexDoesNotExist),
-                    |key| Ok(key.tick_index_taker_to_maker),
-                )?;
-            }
-            None => {
-                return Err(ContractError::LiquidityNotFound);
-            }
-        }
-
-        if target_tick_index_1 <= lowest_tick_index_0 * -1 {
-            token_1_swappable = true;
-        }
-    }
-
-    let mut swapped_amount_0: Uint128 = Uint128::zero();
-    let mut gained_amount_0: Uint128 = Uint128::zero();
-    let mut swapped_amount_1: Uint128 = Uint128::zero();
-    let mut gained_amount_1: Uint128 = Uint128::zero();
-
-  
-
-    if (token_0_swappable) {
-        let msg: MsgPlaceLimitOrder = MsgPlaceLimitOrder {
+    for deposit in res.deposits.iter() {
+        let withdraw_msg = MsgWithdrawal {
             creator: env.contract.address.to_string(),
-            min_average_sell_price: None, 
             receiver: env.contract.address.to_string(),
-            token_in: config.pair_data.token_0.denom.clone(),
-            token_out: config.pair_data.token_1.denom.clone(),
-            tick_index_in_to_out: target_tick_index_0 + 2,
-            amount_in: swapped_amount_0.to_string(),
-            order_type: LimitOrderType::ImmediateOrCancel.into(),
-            expiration_time: None,
-            max_amount_out: None,
-            // TODO: make this an option
-            limit_sell_price: None
+            token_a: config.pair_data.token_0.denom.clone(),
+            token_b: config.pair_data.token_1.denom.clone(),
+            shares_to_remove: vec![deposit
+                .shares_owned
+                .parse()
+                .expect("Failed to parse the string as an integer")],
+            tick_indexes_a_to_b: vec![deposit.center_tick_index],
+            fees: vec![deposit.fee],
         };
-        // TODO: ensure autoswap is enabled and responce includes the total pricing.
-        let token_0_swap_simulation_result = dex_querier.simulate_place_limit_order(Some(msg))?;
 
-        // get the amount of token 0 the limit order immediately used
-        swapped_amount_0 = token_0_swap_simulation_result.clone()
+        // Wrap the DexMsg into a SubMsg with reply
+        let sim_response = dex_querier.simulate_withdrawal(Some(withdraw_msg))?;
+        let amount_0 = sim_response
             .resp
-            .and_then(|resp| resp.taker_coin_in)
-            .and_then(|coin| Uint128::from_str(&coin.amount).ok())
-            .unwrap_or(Uint128::zero());
-        // get the amount of token1 that the limit order immediatly produced
-        // Q: Does this correctly account for auto-swap pricing? i.e autoswapping through multiple orders
-        gained_amount_1 = token_0_swap_simulation_result
+            .clone()
+            .unwrap()
+            .reserve0_withdrawn
+            .parse::<Uint128>()
+            .unwrap();
+        let amount_1 = sim_response
             .resp
-            .and_then(|resp| resp.taker_coin_out)
-            .and_then(|coin| Uint128::from_str(&coin.amount).ok())
-            .unwrap_or(Uint128::zero());
+            .clone()
+            .unwrap()
+            .reserve1_withdrawn
+            .parse::<Uint128>()
+            .unwrap();
+        total_amount_0 += amount_0;
+        total_amount_1 += amount_1;
+    }
+    Ok((total_amount_0, total_amount_1))
+}
+
+pub fn get_mint_amount(
+    env: Env,
+    deps: &DepsMut,
+    config: Config,
+    deposit_amount_0: Uint128,
+    deposit_amount_1: Uint128,
+) -> Result<Uint128, ContractError> {
+    let mut total_shares = PrecDec::zero();
+    let balances = query_contract_balance(deps, env.clone(), config.pair_data.clone())?;
+
+    let prices = get_prices(deps.as_ref(), env.clone())?;
+    let (deposited_amount_0, deposited_amount_1) =
+        get_deposited_token_amounts(env.clone(), deps, config.clone())?;
+    let total_amount_0 = balances[0].amount + deposited_amount_0;
+    let total_amount_1 = balances[1].amount + deposited_amount_1;
+    // Get the total value of the remaining tokens
+    let total_value_token_0 = PrecDec::from_ratio(
+        total_amount_0,
+        10u128.pow(config.pair_data.token_0.decimals.into()),
+    ) * prices.token_0_price;
+    let total_value_token_1 = PrecDec::from_ratio(
+        total_amount_1,
+        10u128.pow(config.pair_data.token_1.decimals.into()),
+    ) * prices.token_1_price;
+
+    // Get the total value of the incoming tokens
+    let deposited_value_token_0 = PrecDec::from_ratio(
+        deposit_amount_0,
+        10u128.pow(config.pair_data.token_0.decimals.into()),
+    ) * prices.token_0_price;
+    let deposited_value_token_1 = PrecDec::from_ratio(
+        deposit_amount_1,
+        10u128.pow(config.pair_data.token_1.decimals.into()),
+    ) * prices.token_1_price;
+
+    let total_value_combined = total_value_token_0 + total_value_token_1;
+    let deposit_value_incoming = deposited_value_token_0
+        .checked_add(deposited_value_token_1)
+        .unwrap();
+
+    if config.total_shares == Uint128::zero() {
+        // Initial deposit - set shares equal to deposit value
+        total_shares = deposit_value_incoming;
+    } else {
+        // Calculate proportional shares based on the ratio of deposit value to total value
+        total_shares = deposit_value_incoming
+            .checked_mul(PrecDec::from_ratio(config.total_shares, 1u128))
+            .map_err(|_| ContractError::ConversionError)?
+            .checked_div(total_value_combined)
+            .map_err(|_| ContractError::ConversionError)?;
+    }
+    let shares_returned = precdec_to_uint128(
+        total_shares
+            .checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))
+            .map_err(|_| ContractError::ConversionError)?,
+    )?;
+    Ok(shares_returned)
+}
+
+pub fn precdec_to_uint128(precdec: PrecDec) -> Result<Uint128, ContractError> {
+    // Check if the value is negative
+    if precdec < PrecDec::zero() {
+        return Err(ContractError::ConversionError);
     }
 
-    if (token_1_swappable) {
+    // Convert to uint256 floor value to handle potential overflow
+    let uint_floor = precdec.to_uint_floor();
 
-        let msg: MsgPlaceLimitOrder = MsgPlaceLimitOrder {
-            creator: env.contract.address.to_string(),
-            min_average_sell_price: None, 
-            receiver: env.contract.address.to_string(),
-            token_in: config.pair_data.token_1.denom.clone(),
-            token_out: config.pair_data.token_0.denom.clone(),
-            tick_index_in_to_out: target_tick_index_0 + 2,
-            amount_in: swapped_amount_1.to_string(),
-            order_type: LimitOrderType::ImmediateOrCancel.into(),
-            expiration_time: None,
-            max_amount_out: None,
-            // TODO: make this an option
-            limit_sell_price: None
-        };
-        // TODO: ensure autoswap is enabled and responce includes the total pricing.
-        let token_1_swap_simulation_result = dex_querier.simulate_place_limit_order(Some(msg))?;
-
-        // get the amount of token 1 the limit order immediately used
-        swapped_amount_1 = token_1_swap_simulation_result.clone()
-            .resp
-            .and_then(|resp| resp.taker_coin_in)
-            .and_then(|coin| Uint128::from_str(&coin.amount).ok())
-            .unwrap_or(Uint128::zero());
-        // get the amount of token 0 that the limit order immediately produced
-        gained_amount_0 = token_1_swap_simulation_result
-            .resp
-            .and_then(|resp| resp.taker_coin_out)
-            .and_then(|coin| Uint128::from_str(&coin.amount).ok())
-            .unwrap_or(Uint128::zero());
+    // Check if the value exceeds Uint128::MAX
+    if uint_floor > Uint128::MAX.into() {
+        return Err(ContractError::ConversionError);
     }
+    let as_u128: Uint128 = uint_floor
+        .try_into()
+        .map_err(|_| ContractError::ConversionError)?;
 
-    // let limit_sell_price_0: Decimal = prices.token_0_price * Decimal::percent(120);
-    // let limit_sell_price_1: Decimal = prices.token_1_price * Decimal::percent(120);
+    Ok(as_u128)
+}
 
-    if swapped_amount_0 > Uint128::zero() {
-        let limit_order_msg = Into::<CosmosMsg>::into(MsgPlaceLimitOrder {
+pub fn get_deposit_messages(
+    env: &Env,
+    config: Config,
+    tick_index: i64,
+    prices: crate::msg::CombinedPriceResponse,
+) -> Result<Vec<CosmosMsg>, ContractError> {
+    let mut messages = Vec::new();
+    // get the amount to deposit at the tightest spread
+    let deposit_data = get_deposit_data(
+        config.balances.token_0.amount,
+        config.balances.token_1.amount,
+        tick_index,
+        config.base_fee,
+        &prices,
+        config.base_deposit_percentage,
+        config.pair_data.token_0.decimals,
+        config.pair_data.token_1.decimals,
+    )?;
+    // Create base deposit message
+    let dex_msg = Into::<CosmosMsg>::into(MsgDeposit {
+        creator: env.contract.address.to_string(),
+        receiver: env.contract.address.to_string(),
+        token_a: config.pair_data.token_0.denom.clone(),
+        token_b: config.pair_data.token_1.denom.clone(),
+        amounts_a: vec![deposit_data.amount0.to_string()],
+        amounts_b: vec![deposit_data.amount1.to_string()],
+        tick_indexes_a_to_b: vec![deposit_data.tick_index],
+        fees: vec![deposit_data.fee],
+        options: vec![DepositOptions {
+            disable_autoswap: false,
+            fail_tx_on_bel: false,
+        }],
+    });
+
+    if config.deposit_ambient {
+        // Create ambient deposit message
+        let dex_msg_ambient = Into::<CosmosMsg>::into(MsgDeposit {
             creator: env.contract.address.to_string(),
-            min_average_sell_price: None, 
             receiver: env.contract.address.to_string(),
-            token_in: config.pair_data.token_0.denom.clone(),
-            token_out: config.pair_data.token_1.denom.clone(),
-            tick_index_in_to_out: target_tick_index_0 + 2,
-            amount_in: swapped_amount_0.to_string(),
-            order_type: LimitOrderType::ImmediateOrCancel.into(),
-            expiration_time: None,
-            max_amount_out: None,
-            // TODO: make this an option
-            limit_sell_price: None
+            token_a: config.pair_data.token_0.denom.clone(),
+            token_b: config.pair_data.token_1.denom.clone(),
+            amounts_a: vec![(config.balances.token_0.amount - deposit_data.amount0).to_string()],
+            amounts_b: vec![(config.balances.token_1.amount - deposit_data.amount1).to_string()],
+            tick_indexes_a_to_b: vec![deposit_data.tick_index],
+            fees: vec![config.ambient_fee],
+            options: vec![DepositOptions {
+                disable_autoswap: false,
+                fail_tx_on_bel: false,
+            }],
         });
-
-        messages.push(limit_order_msg);
-
-        config.balances.token_0.amount = config
-            .balances
-            .token_0
-            .amount
-            .checked_sub(swapped_amount_0)
-            .unwrap_or_default();
+        messages.push(dex_msg_ambient);
     }
-    if swapped_amount_1 > Uint128::zero() {
-        let limit_order_msg = Into::<CosmosMsg>::into(MsgPlaceLimitOrder {
-            creator: env.contract.address.to_string(),
-            min_average_sell_price: None, 
-            receiver: env.contract.address.to_string(),
-            token_in: config.pair_data.token_1.denom.clone(),
-            token_out: config.pair_data.token_0.denom.clone(),
-            tick_index_in_to_out: target_tick_index_1 + 2,
-            amount_in: swapped_amount_1.to_string(),
-            order_type: LimitOrderType::ImmediateOrCancel.into(),
-            expiration_time: None,
-            max_amount_out: None,
-            // TODO: make this an option
-            limit_sell_price: None
-        });
-
-        messages.push(limit_order_msg);
-
-        config.balances.token_1.amount = config
-            .balances
-            .token_1
-            .amount
-            .checked_sub(swapped_amount_1)
-            .unwrap_or_default();
-    }
-    Ok((messages, gained_amount_0, gained_amount_1))
+    messages.push(dex_msg);
+    Ok(messages)
 }
