@@ -103,9 +103,7 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     // Load the contract configuration
     let config = CONFIG.load(deps.storage)?;
     let mut messages: Vec<CosmosMsg> = vec![];
-    let token_0_usable = config.balances.token_0.amount;
-    let token_1_usable = config.balances.token_1.amount;
-    let mut lo_messages: Vec<CosmosMsg> = vec![];
+
     // Verify that the sender is the owner
     if info.sender != config.owner {
         return Err(ContractError::Unauthorized {});
@@ -115,7 +113,7 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     let prices: crate::msg::CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
     let tick_index = price_to_tick_index(prices.price_0_to_1)?;
 
-    //let (lo_messages, token_0_usable, token_1_usable) = prepare_state(&deps, &env, &config, tick_index)?;
+    let (lo_messages, token_0_usable, token_1_usable) = prepare_state(&deps, &env, &config, tick_index)?;
     messages.extend(lo_messages);
     let deposit_messages = get_deposit_messages(&env, config.clone(), tick_index, prices, token_0_usable, token_1_usable)?;
     messages.extend(deposit_messages);
