@@ -45,8 +45,6 @@ pub struct Config {
     pub base_deposit_percentage: u64,
     pub ambient_fee: u64,
     pub deposit_ambient: bool,
-    pub lp_denom: String,
-    pub total_shares: Uint128,
     pub owner: Addr,
     pub deposit_cap: Uint128,
 }

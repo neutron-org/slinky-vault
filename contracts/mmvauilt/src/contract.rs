@@ -67,8 +67,6 @@ pub fn instantiate(
         base_deposit_percentage: msg.base_deposit_percentage,
         ambient_fee: msg.ambient_fee,
         deposit_ambient: msg.deposit_ambient,
-        lp_denom: "".to_string(),
-        total_shares: Uint128::zero(),
         owner,
         deposit_cap: msg.deposit_cap,
     };
@@ -104,15 +102,15 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Deposit { .. } => deposit(deps, _env, info),
-        ExecuteMsg::Withdraw { amount } => {
+        ExecuteMsg::Withdraw { .. } => {
             // Prevent tokens from being sent with the Withdraw message
             if !info.funds.is_empty() {
                 return Err(ContractError::FundsNotAllowed);
             }
-            withdraw(deps, _env, info, amount)
+            withdraw(deps, _env, info)
         }
         ExecuteMsg::DexDeposit { .. } => {
-            // Prevent tokens from being sent with the Withdraw message
+            // Prevent tokens from being sent with the Deposit message
             if !info.funds.is_empty() {
                 return Err(ContractError::FundsNotAllowed);
             }
@@ -124,13 +122,6 @@ pub fn execute(
                 return Err(ContractError::FundsNotAllowed);
             }
             dex_withdrawal(deps, _env, info)
-        }
-        ExecuteMsg::CreateToken { .. } => {
-            // Prevent tokens from being sent with the Withdraw message
-            if !info.funds.is_empty() {
-                return Err(ContractError::FundsNotAllowed);
-            }
-            execute_create_token(deps, _env, info)
         }
     }
 }
@@ -155,27 +146,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
-        1 => handle_create_token_reply(deps, msg.result),
-        2 => handle_dex_withdrawal_reply(deps, env, msg.result),
-        3 => {
-            let response = msg.result.clone().into_result().unwrap();
-            // Decode the protobuf payload
-            let payload = WithdrawPayload::decode(
-                response
-                    .msg_responses
-                    .first()
-                    .ok_or(ContractError::NoReplyData)?
-                    .value
-                    .as_slice(),
-            )
-            .map_err(|_| ContractError::ParseError)?;
-
-            // Convert amount string to Uint128
-            let amount =
-                Uint128::from_str(&payload.amount).map_err(|_| ContractError::ParseError)?;
-
-            handle_withdrawal_reply(deps, env, msg.result, amount, payload.sender)
-        }
+        1 => handle_dex_withdrawal_reply(deps, env, msg.result),
         id => Err(ContractError::UnknownReplyId { id }),
     }
 }

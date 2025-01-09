@@ -51,10 +51,10 @@ impl InstantiateMsg {
             "token_b symbol (base)".to_string(),
         )?;
 
-        if self.max_block_old > 0 {
+        if self.max_block_old >2{
             return Err(ContractError::MalformedInput {
-                input: "max_block_stale".to_string(),
-                reason: "must be >=1".to_string(),
+                input: "max_block_old".to_string(),
+                reason: "must be <=2".to_string(),
             });
         }
         Self::validate_denom(&self.token_a.denom)?;
@@ -136,20 +136,11 @@ pub enum ExecuteMsg {
     // deposit funds to use for market making
     Deposit {},
     // withdraw free unutilised funds
-    Withdraw { amount: Uint128 },
+    Withdraw { },
     // // cancels and withdraws all active and filled Limit orders
     DexDeposit {},
     DexWithdrawal {},
-    // create the LP token
-    CreateToken {},
-    // // pauses all deposit functionality
-    // Pause {},
-    // // helper to atomically purge and withdraw
-    // PurgeAnddWithdraw {},
-    // // helper to atomically purge and pause
-    // PurgeAndPause {},
 }
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {

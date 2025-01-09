@@ -11,7 +11,7 @@ use neutron_std::types::neutron::util::precdec::PrecDec;
 use neutron_std::types::osmosis::tokenfactory::v1beta1::MsgCreateDenomResponse;
 use neutron_std::types::{
     neutron::dex::{
-        DepositOptions, DexQuerier, MsgDeposit, MsgWithdrawal, MsgWithdrawalResponse, QueryAllUserDepositsResponse,
+        DepositOptions, DexQuerier, MsgDeposit, MsgWithdrawal, MsgWithdrawalResponse, QueryAllUserDepositsResponse, MsgPlaceLimitOrder, LimitOrderType
     },
     slinky::{
         marketmap::v1::{MarketMap, MarketResponse, MarketmapQuerier},
@@ -523,64 +523,6 @@ pub fn get_deposited_token_amounts(
     Ok((total_amount_0, total_amount_1))
 }
 
-pub fn get_mint_amount(
-    env: Env,
-    deps: &DepsMut,
-    config: Config,
-    deposit_amount_0: Uint128,
-    deposit_amount_1: Uint128,
-) -> Result<Uint128, ContractError> {
-    let mut total_shares = PrecDec::zero();
-    let balances = query_contract_balance(deps, env.clone(), config.pair_data.clone())?;
-
-    let prices = get_prices(deps.as_ref(), env.clone())?;
-    let (deposited_amount_0, deposited_amount_1) =
-        get_deposited_token_amounts(env.clone(), deps, config.clone())?;
-    let total_amount_0 = balances[0].amount + deposited_amount_0;
-    let total_amount_1 = balances[1].amount + deposited_amount_1;
-    // Get the total value of the remaining tokens
-    let total_value_token_0 = PrecDec::from_ratio(
-        total_amount_0,
-        10u128.pow(config.pair_data.token_0.decimals.into()),
-    ) * prices.token_0_price;
-    let total_value_token_1 = PrecDec::from_ratio(
-        total_amount_1,
-        10u128.pow(config.pair_data.token_1.decimals.into()),
-    ) * prices.token_1_price;
-
-    // Get the total value of the incoming tokens
-    let deposited_value_token_0 = PrecDec::from_ratio(
-        deposit_amount_0,
-        10u128.pow(config.pair_data.token_0.decimals.into()),
-    ) * prices.token_0_price;
-    let deposited_value_token_1 = PrecDec::from_ratio(
-        deposit_amount_1,
-        10u128.pow(config.pair_data.token_1.decimals.into()),
-    ) * prices.token_1_price;
-
-    let total_value_combined = total_value_token_0 + total_value_token_1;
-    let deposit_value_incoming = deposited_value_token_0
-        .checked_add(deposited_value_token_1)
-        .unwrap();
-
-    if config.total_shares == Uint128::zero() {
-        // Initial deposit - set shares equal to deposit value
-        total_shares = deposit_value_incoming;
-    } else {
-        // Calculate proportional shares based on the ratio of deposit value to total value
-        total_shares = deposit_value_incoming
-            .checked_mul(PrecDec::from_ratio(config.total_shares, 1u128))
-            .map_err(|_| ContractError::ConversionError)?
-            .checked_div(total_value_combined)
-            .map_err(|_| ContractError::ConversionError)?;
-    }
-    let shares_returned = precdec_to_uint128(
-        total_shares
-            .checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))
-            .map_err(|_| ContractError::ConversionError)?,
-    )?;
-    Ok(shares_returned)
-}
 
 pub fn precdec_to_uint128(precdec: PrecDec) -> Result<Uint128, ContractError> {
     // Check if the value is negative
@@ -607,12 +549,15 @@ pub fn get_deposit_messages(
     config: Config,
     tick_index: i64,
     prices: crate::msg::CombinedPriceResponse,
+    token_0_balance: Uint128,
+    token_1_balance: Uint128,
 ) -> Result<Vec<CosmosMsg>, ContractError> {
     let mut messages = Vec::new();
+    
     // get the amount to deposit at the tightest spread
     let deposit_data = get_deposit_data(
-        config.balances.token_0.amount,
-        config.balances.token_1.amount,
+        token_0_balance,
+        token_1_balance,
         tick_index,
         config.base_fee,
         &prices,
@@ -620,40 +565,128 @@ pub fn get_deposit_messages(
         config.pair_data.token_0.decimals,
         config.pair_data.token_1.decimals,
     )?;
-    // Create base deposit message
-    let dex_msg = Into::<CosmosMsg>::into(MsgDeposit {
-        creator: env.contract.address.to_string(),
-        receiver: env.contract.address.to_string(),
-        token_a: config.pair_data.token_0.denom.clone(),
-        token_b: config.pair_data.token_1.denom.clone(),
-        amounts_a: vec![deposit_data.amount0.to_string()],
-        amounts_b: vec![deposit_data.amount1.to_string()],
-        tick_indexes_a_to_b: vec![deposit_data.tick_index],
-        fees: vec![deposit_data.fee],
-        options: vec![DepositOptions {
-            disable_autoswap: false,
-            fail_tx_on_bel: false,
-        }],
-    });
 
-    if config.deposit_ambient {
-        // Create ambient deposit message
-        let dex_msg_ambient = Into::<CosmosMsg>::into(MsgDeposit {
+    // Only create base deposit message if amounts are greater than zero
+    if deposit_data.amount0 > Uint128::zero() || deposit_data.amount1 > Uint128::zero() {
+        let dex_msg = Into::<CosmosMsg>::into(MsgDeposit {
             creator: env.contract.address.to_string(),
             receiver: env.contract.address.to_string(),
             token_a: config.pair_data.token_0.denom.clone(),
             token_b: config.pair_data.token_1.denom.clone(),
-            amounts_a: vec![(config.balances.token_0.amount - deposit_data.amount0).to_string()],
-            amounts_b: vec![(config.balances.token_1.amount - deposit_data.amount1).to_string()],
+            amounts_a: vec![deposit_data.amount0.to_string()],
+            amounts_b: vec![deposit_data.amount1.to_string()],
             tick_indexes_a_to_b: vec![deposit_data.tick_index],
-            fees: vec![config.ambient_fee],
+            fees: vec![deposit_data.fee],
             options: vec![DepositOptions {
                 disable_autoswap: false,
                 fail_tx_on_bel: false,
             }],
         });
-        messages.push(dex_msg_ambient);
+        messages.push(dex_msg);
     }
-    messages.push(dex_msg);
+
+    // Calculate remaining amounts for ambient deposit
+    if config.deposit_ambient {
+        let remaining_amount0 = token_0_balance.checked_sub(deposit_data.amount0).unwrap_or(Uint128::zero());
+        let remaining_amount1 = token_1_balance.checked_sub(deposit_data.amount1).unwrap_or(Uint128::zero());
+
+        // Only create ambient deposit if there are remaining tokens
+        if remaining_amount0 > Uint128::zero() || remaining_amount1 > Uint128::zero() {
+            let dex_msg_ambient = Into::<CosmosMsg>::into(MsgDeposit {
+                creator: env.contract.address.to_string(),
+                receiver: env.contract.address.to_string(),
+                token_a: config.pair_data.token_0.denom.clone(),
+                token_b: config.pair_data.token_1.denom.clone(),
+                amounts_a: vec![remaining_amount0.to_string()],
+                amounts_b: vec![remaining_amount1.to_string()],
+                tick_indexes_a_to_b: vec![deposit_data.tick_index],
+                fees: vec![config.ambient_fee],
+                options: vec![DepositOptions {
+                    disable_autoswap: false,
+                    fail_tx_on_bel: false,
+                }],
+            });
+            messages.push(dex_msg_ambient);
+        }
+    }
+
     Ok(messages)
 }
+
+
+pub fn prepare_state(
+    deps: &DepsMut,
+    env: &Env,
+    config: &Config,
+    index: i64,
+) -> Result<(Vec<CosmosMsg>, Uint128, Uint128), ContractError> {
+    let mut messages: Vec<CosmosMsg> = vec![];
+    let target_tick_index_1 = index + config.base_fee as i64;
+    let target_tick_index_0 = (index * -1) + config.base_fee as i64;
+
+    let mut token_0_usable = config.balances.token_0.amount;
+    let mut token_1_usable = config.balances.token_1.amount;
+
+    let dex_querier = DexQuerier::new(&deps.querier);
+
+    // First limit order simulation (token 0 -> token 1)
+    let limit_order_msg_token_0 = MsgPlaceLimitOrder {
+        creator: env.contract.address.to_string(),
+        receiver: env.contract.address.to_string(),
+        token_in: config.pair_data.token_0.denom.clone(),
+        token_out: config.pair_data.token_1.denom.clone(),
+        tick_index_in_to_out: target_tick_index_0,
+        amount_in: token_0_usable.to_string(), // Use current usable amount
+        order_type: LimitOrderType::ImmediateOrCancel.into(),
+        expiration_time: None,
+        max_amount_out: None,
+        limit_sell_price: None,
+        min_average_sell_price: None,
+    };
+
+    // First swap simulation
+    if let Ok(response) = dex_querier.simulate_place_limit_order(Some(limit_order_msg_token_0.clone())) {
+        if let Some(result) = response.resp {
+            let token_0_out = Uint128::from_str(&result.taker_coin_out.unwrap().amount)?;
+            let token_1_in = Uint128::from_str(&result.taker_coin_in.unwrap().amount)?;
+            
+            if token_0_out > Uint128::zero() {
+                messages.push(Into::<CosmosMsg>::into(limit_order_msg_token_0));
+                token_0_usable -= token_0_out;
+                token_1_usable += token_1_in;
+            }
+        }
+    }
+
+    // Second limit order simulation (token 1 -> token 0)
+    let limit_order_msg_token_1 = MsgPlaceLimitOrder {
+        creator: env.contract.address.to_string(),
+        receiver: env.contract.address.to_string(),
+        token_in: config.pair_data.token_1.denom.clone(),
+        token_out: config.pair_data.token_0.denom.clone(),
+        tick_index_in_to_out: target_tick_index_1,
+        amount_in: token_1_usable.to_string(), // Use current usable amount
+        order_type: LimitOrderType::ImmediateOrCancel.into(),
+        expiration_time: None,
+        max_amount_out: None,
+        limit_sell_price: None,
+        min_average_sell_price: None,
+    };
+
+    // Second swap simulation
+    if let Ok(response) = dex_querier.simulate_place_limit_order(Some(limit_order_msg_token_1.clone())) {
+        if let Some(result) = response.resp {
+            let token_1_out = Uint128::from_str(&result.taker_coin_out.unwrap().amount)?;
+            let token_0_in = Uint128::from_str(&result.taker_coin_in.unwrap().amount)?;
+            
+            if token_1_out > Uint128::zero() {
+                messages.push(Into::<CosmosMsg>::into(limit_order_msg_token_1));
+                token_1_usable -= token_1_out;
+                token_0_usable += token_0_in;
+            }
+        }
+    }
+
+    Ok((messages, token_0_usable, token_1_usable))
+}
+
