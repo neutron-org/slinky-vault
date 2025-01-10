@@ -100,6 +100,8 @@ pub fn withdraw(
 
 // depends on up-to-date config
 pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+    deps.api.debug(&format!(">>>>>>> dex_deposit called"));
+
     // Load the contract configuration
     let config = CONFIG.load(deps.storage)?;
     let mut messages: Vec<CosmosMsg> = vec![];
@@ -115,8 +117,12 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
 
     let (lo_messages, token_0_usable, token_1_usable) = prepare_state(&deps, &env, &config, tick_index)?;
     messages.extend(lo_messages);
-    let deposit_messages = get_deposit_messages(&env, config.clone(), tick_index, prices, token_0_usable, token_1_usable)?;
+    let deposit_messages = get_deposit_messages(&deps.as_ref(), &env, config.clone(), tick_index, prices, token_0_usable, token_1_usable)?;
     messages.extend(deposit_messages);
+
+    deps.api.debug(&format!(">>>>>>> dex_deposit finished"));
+    deps.api.debug(&format!(">>>>>>> messages: {:?}", messages));
+
 
     Ok(Response::new()
         .add_messages(messages)

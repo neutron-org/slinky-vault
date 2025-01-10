@@ -127,4 +127,13 @@ pub enum ContractError {
 
     #[error("Unknown reply id: {id}")]
     UnknownReplyId { id: u64 },
+
+    #[error("Overflow error")]
+    Overflow(cosmwasm_std::OverflowError),
+}
+
+impl From<cosmwasm_std::OverflowError> for ContractError {
+    fn from(err: cosmwasm_std::OverflowError) -> Self {
+        ContractError::Overflow(err)
+    }
 }

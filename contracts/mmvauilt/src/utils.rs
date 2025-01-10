@@ -389,7 +389,7 @@ pub fn get_deposit_data(
 
     let (final_amount_0, final_amount_1) = if value_token_0 > value_token_1 {
         let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(50);
-        let additional_token_0 = imbalance / prices.token_0_price;
+        let additional_token_0 = imbalance.checked_mul(PrecDec::from_ratio(10u128.pow(decimals_0.into()), 1u128))? / prices.token_0_price;
         (
             computed_amount_0
                 + Uint128::try_from(additional_token_0.to_uint_floor())
@@ -398,7 +398,7 @@ pub fn get_deposit_data(
         )
     } else if value_token_1 > value_token_0 {
         let imbalance = (value_token_1 - value_token_0) * PrecDec::percent(50);
-        let additional_token_1 = imbalance / prices.token_1_price;
+        let additional_token_1 = imbalance.checked_mul(PrecDec::from_ratio(10u128.pow(decimals_1.into()), 1u128))? / prices.token_1_price;
         (
             computed_amount_0,
             computed_amount_1
@@ -425,12 +425,13 @@ pub fn get_deposit_data(
         final_amount_1
     };
 
-    Ok(DepositResult {
+    let result = DepositResult {
         amount0: final_amount_0,
         amount1: final_amount_1,
         tick_index,
         fee,
-    })
+    };
+    Ok(result)
 }
 
 pub fn extract_withdrawal_amounts(
@@ -545,6 +546,7 @@ pub fn precdec_to_uint128(precdec: PrecDec) -> Result<Uint128, ContractError> {
 }
 
 pub fn get_deposit_messages(
+    deps: &Deps,
     env: &Env,
     config: Config,
     tick_index: i64,
@@ -553,7 +555,7 @@ pub fn get_deposit_messages(
     token_1_balance: Uint128,
 ) -> Result<Vec<CosmosMsg>, ContractError> {
     let mut messages = Vec::new();
-    
+
     // get the amount to deposit at the tightest spread
     let deposit_data = get_deposit_data(
         token_0_balance,
@@ -609,7 +611,6 @@ pub fn get_deposit_messages(
             messages.push(dex_msg_ambient);
         }
     }
-
     Ok(messages)
 }
 
@@ -636,7 +637,7 @@ pub fn prepare_state(
         token_in: config.pair_data.token_0.denom.clone(),
         token_out: config.pair_data.token_1.denom.clone(),
         tick_index_in_to_out: target_tick_index_0,
-        amount_in: token_0_usable.to_string(), // Use current usable amount
+        amount_in: token_0_usable.to_string(),
         order_type: LimitOrderType::ImmediateOrCancel.into(),
         expiration_time: None,
         max_amount_out: None,
@@ -647,13 +648,15 @@ pub fn prepare_state(
     // First swap simulation
     if let Ok(response) = dex_querier.simulate_place_limit_order(Some(limit_order_msg_token_0.clone())) {
         if let Some(result) = response.resp {
-            let token_0_out = Uint128::from_str(&result.taker_coin_out.unwrap().amount)?;
-            let token_1_in = Uint128::from_str(&result.taker_coin_in.unwrap().amount)?;
-            
-            if token_0_out > Uint128::zero() {
-                messages.push(Into::<CosmosMsg>::into(limit_order_msg_token_0));
-                token_0_usable -= token_0_out;
-                token_1_usable += token_1_in;
+            if let (Some(coin_out), Some(coin_in)) = (result.taker_coin_out, result.taker_coin_in) {
+                let token_1_out = Uint128::from_str(&coin_out.amount).unwrap_or(Uint128::zero());
+                let token_0_in = Uint128::from_str(&coin_in.amount).unwrap_or(Uint128::zero());
+
+                if token_0_in > Uint128::zero() {
+                    messages.push(Into::<CosmosMsg>::into(limit_order_msg_token_0));
+                    token_0_usable -= token_0_in;
+                    token_1_usable += token_1_out;
+                }
             }
         }
     }
@@ -665,7 +668,7 @@ pub fn prepare_state(
         token_in: config.pair_data.token_1.denom.clone(),
         token_out: config.pair_data.token_0.denom.clone(),
         tick_index_in_to_out: target_tick_index_1,
-        amount_in: token_1_usable.to_string(), // Use current usable amount
+        amount_in: token_1_usable.to_string(),
         order_type: LimitOrderType::ImmediateOrCancel.into(),
         expiration_time: None,
         max_amount_out: None,
@@ -676,13 +679,15 @@ pub fn prepare_state(
     // Second swap simulation
     if let Ok(response) = dex_querier.simulate_place_limit_order(Some(limit_order_msg_token_1.clone())) {
         if let Some(result) = response.resp {
-            let token_1_out = Uint128::from_str(&result.taker_coin_out.unwrap().amount)?;
-            let token_0_in = Uint128::from_str(&result.taker_coin_in.unwrap().amount)?;
-            
-            if token_1_out > Uint128::zero() {
-                messages.push(Into::<CosmosMsg>::into(limit_order_msg_token_1));
-                token_1_usable -= token_1_out;
-                token_0_usable += token_0_in;
+            if let (Some(coin_out), Some(coin_in)) = (result.taker_coin_out, result.taker_coin_in) {
+                let token_0_out = Uint128::from_str(&coin_out.amount).unwrap_or(Uint128::zero());
+                let token_1_in = Uint128::from_str(&coin_in.amount).unwrap_or(Uint128::zero());
+
+                if token_1_in > Uint128::zero() {
+                    messages.push(Into::<CosmosMsg>::into(limit_order_msg_token_1));
+                    token_1_usable -= token_1_in;
+                    token_0_usable += token_0_out;
+                }
             }
         }
     }
