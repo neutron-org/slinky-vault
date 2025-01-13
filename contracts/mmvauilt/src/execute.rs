@@ -1,9 +1,7 @@
 use crate::error::ContractError;
 use crate::state::{CONFIG, DEX_WITHDRAW_REPLY_ID};
 use crate::utils::*;
-use cosmwasm_std::{
-    CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult, Uint128,
-};
+use cosmwasm_std::{CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult, Uint128};
 use neutron_std::types::neutron::dex::{DexQuerier, MsgWithdrawal, QueryAllUserDepositsResponse};
 
 pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {

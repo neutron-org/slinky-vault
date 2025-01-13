@@ -240,10 +240,16 @@ pub fn get_prices(deps: Deps, env: Env) -> ContractResult<CombinedPriceResponse>
 
     // Get prices for token_0 and token_1, or default to 1 for valid currencies
     let pair_1 = config.pair_data.token_0.pair;
-    let token_0_price = get_price_or_default(&deps, &env, &pair_1, config.max_blocks_old)?;
+    let token_0_price =
+        get_price_or_default(&deps, &env, &pair_1, config.max_blocks_old)?.checked_mul(
+            PrecDec::from_ratio(10u128.pow(config.pair_data.token_0.decimals.into()), 1u128),
+        )?;
 
     let pair_2 = config.pair_data.token_1.pair;
-    let token_1_price = get_price_or_default(&deps, &env, &pair_2, config.max_blocks_old)?;
+    let token_1_price =
+        get_price_or_default(&deps, &env, &pair_2, config.max_blocks_old)?.checked_mul(
+            PrecDec::from_ratio(10u128.pow(config.pair_data.token_1.decimals.into()), 1u128),
+        )?;
 
     // Calculate the price ratio
     let price_0_to_1 = price_ratio(token_0_price, token_1_price);
@@ -376,23 +382,19 @@ pub fn get_deposit_data(
     let computed_amount_0 = total_available_0.multiply_ratio(base_deposit_percentage, 100u128);
     let computed_amount_1 = total_available_1.multiply_ratio(base_deposit_percentage, 100u128);
 
-    // Calculate normalized value in USD for token 0
-    let value_token_0 = PrecDec::from_ratio(
-        total_available_0 - computed_amount_0,
-        10u128.pow(decimals_0.into()),
-    ) * prices.token_0_price;
+    // Calculate value in USD for token 0
+    let value_token_0 = PrecDec::from_atomics(total_available_0 - computed_amount_0, 0)
+        .map_err(|_| ContractError::DecimalConversionError)?
+        * prices.token_0_price;
 
-    // Calculate normalized value in USD for token 1
-    let value_token_1 = PrecDec::from_ratio(
-        total_available_1 - computed_amount_1,
-        10u128.pow(decimals_1.into()),
-    ) * prices.token_1_price;
+    // Calculate value in USD for token 1
+    let value_token_1 = PrecDec::from_atomics(total_available_1 - computed_amount_1, 0)
+        .map_err(|_| ContractError::DecimalConversionError)?
+        * prices.token_1_price;
 
     let (final_amount_0, final_amount_1) = if value_token_0 > value_token_1 {
         let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(50);
-        let additional_token_0 = imbalance
-            .checked_mul(PrecDec::from_ratio(10u128.pow(decimals_0.into()), 1u128))?
-            / prices.token_0_price;
+        let additional_token_0 = imbalance / prices.token_0_price;
         (
             computed_amount_0
                 + Uint128::try_from(additional_token_0.to_uint_floor())
@@ -401,9 +403,7 @@ pub fn get_deposit_data(
         )
     } else if value_token_1 > value_token_0 {
         let imbalance = (value_token_1 - value_token_0) * PrecDec::percent(50);
-        let additional_token_1 = imbalance
-            .checked_mul(PrecDec::from_ratio(10u128.pow(decimals_1.into()), 1u128))?
-            / prices.token_1_price;
+        let additional_token_1 = imbalance / prices.token_1_price;
         (
             computed_amount_0,
             computed_amount_1
