@@ -1,23 +1,19 @@
 use crate::error::ContractError;
-use crate::msg::{CombinedPriceResponse, WithdrawPayload};
-use crate::state::{CONFIG, CREATE_TOKEN_REPLY_ID, DEX_WITHDRAW_REPLY_ID, WITHDRAW_REPLY_ID};
+use crate::state::{CONFIG, DEX_WITHDRAW_REPLY_ID};
 use crate::utils::*;
 use cosmwasm_std::{
-    BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult, Uint128,
+    CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult, Uint128,
 };
 use neutron_std::types::neutron::dex::{DexQuerier, MsgWithdrawal, QueryAllUserDepositsResponse};
-use neutron_std::types::neutron::util::precdec::PrecDec;
-use neutron_std::types::osmosis::tokenfactory::v1beta1::{MsgBurn, MsgCreateDenom, MsgMint};
-use prost::Message;
 
 pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-    let mut messages: Vec<CosmosMsg> = vec![];
+    let messages: Vec<CosmosMsg> = vec![];
     // Load the contract configuration from storage
     let mut config = CONFIG.load(deps.storage)?;
     //if calles is not the owner error
     if info.sender != config.owner {
         return Err(ContractError::Unauthorized {});
-    }   
+    }
     // Extract the sent funds from the transaction info
     let sent_funds = info.funds;
 
@@ -59,11 +55,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         .add_attribute("token_1_amount", config.balances.token_1.amount.to_string()))
 }
 
-pub fn withdraw(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-) -> Result<Response, ContractError> {
+pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     // Load the contract configuration to access the owner address and balances
     let config = CONFIG.load(deps.storage)?;
     let mut messages: Vec<SubMsg> = vec![];
@@ -76,7 +68,6 @@ pub fn withdraw(
     let dex_querier = DexQuerier::new(&deps.querier);
     let res: QueryAllUserDepositsResponse =
         dex_querier.user_deposits_all(env.contract.address.to_string(), None, true)?;
-
 
     // Add all withdrawals except the last one without reply
     for deposit in res.deposits.iter() {
@@ -113,11 +104,18 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     let prices: crate::msg::CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
     let tick_index = price_to_tick_index(prices.price_0_to_1)?;
 
-    let (lo_messages, token_0_usable, token_1_usable) = prepare_state(&deps, &env, &config, tick_index)?;
+    let (lo_messages, token_0_usable, token_1_usable) =
+        prepare_state(&deps, &env, &config, tick_index)?;
     messages.extend(lo_messages);
-    let deposit_messages = get_deposit_messages(&deps.as_ref(), &env, config.clone(), tick_index, prices, token_0_usable, token_1_usable)?;
+    let deposit_messages = get_deposit_messages(
+        &env,
+        config.clone(),
+        tick_index,
+        prices,
+        token_0_usable,
+        token_1_usable,
+    )?;
     messages.extend(deposit_messages);
-
 
     Ok(Response::new()
         .add_messages(messages)

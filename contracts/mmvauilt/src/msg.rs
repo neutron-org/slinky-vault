@@ -51,7 +51,7 @@ impl InstantiateMsg {
             "token_b symbol (base)".to_string(),
         )?;
 
-        if self.max_block_old >2{
+        if self.max_block_old > 2 {
             return Err(ContractError::MalformedInput {
                 input: "max_block_old".to_string(),
                 reason: "must be <=2".to_string(),
@@ -136,7 +136,7 @@ pub enum ExecuteMsg {
     // deposit funds to use for market making
     Deposit {},
     // withdraw free unutilised funds
-    Withdraw { },
+    Withdraw {},
     // // cancels and withdraws all active and filled Limit orders
     DexDeposit {},
     DexWithdrawal {},

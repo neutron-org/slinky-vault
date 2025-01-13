@@ -1,6 +1,6 @@
 use crate::error::{ContractError, ContractResult};
 use crate::execute::*;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use crate::query::*;
 use crate::state::{Balances, Config, PairData, CONFIG};
 use crate::utils::*;
@@ -8,8 +8,6 @@ use cosmwasm_std::{
     attr, entry_point, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
 };
 use cw2::set_contract_version;
-use prost::Message;
-use std::str::FromStr;
 
 ///////////////
 /// MIGRATE ///

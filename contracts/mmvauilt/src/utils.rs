@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use crate::error::{ContractError, ContractResult};
 use crate::msg::{CombinedPriceResponse, DepositResult};
-use crate::state::{Config, PairData, TokenData, CONFIG, SHARES_MULTIPLIER};
+use crate::state::{Config, PairData, TokenData, CONFIG};
 use cosmwasm_std::{
     BalanceResponse, BankQuery, Coin, CosmosMsg, Deps, DepsMut, Env, Int128, QueryRequest,
     Response, SubMsgResponse, Uint128,
@@ -11,7 +11,8 @@ use neutron_std::types::neutron::util::precdec::PrecDec;
 use neutron_std::types::osmosis::tokenfactory::v1beta1::MsgCreateDenomResponse;
 use neutron_std::types::{
     neutron::dex::{
-        DepositOptions, DexQuerier, MsgDeposit, MsgWithdrawal, MsgWithdrawalResponse, QueryAllUserDepositsResponse, MsgPlaceLimitOrder, LimitOrderType
+        DepositOptions, DexQuerier, LimitOrderType, MsgDeposit, MsgPlaceLimitOrder, MsgWithdrawal,
+        MsgWithdrawalResponse, QueryAllUserDepositsResponse,
     },
     slinky::{
         marketmap::v1::{MarketMap, MarketResponse, MarketmapQuerier},
@@ -389,7 +390,9 @@ pub fn get_deposit_data(
 
     let (final_amount_0, final_amount_1) = if value_token_0 > value_token_1 {
         let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(50);
-        let additional_token_0 = imbalance.checked_mul(PrecDec::from_ratio(10u128.pow(decimals_0.into()), 1u128))? / prices.token_0_price;
+        let additional_token_0 = imbalance
+            .checked_mul(PrecDec::from_ratio(10u128.pow(decimals_0.into()), 1u128))?
+            / prices.token_0_price;
         (
             computed_amount_0
                 + Uint128::try_from(additional_token_0.to_uint_floor())
@@ -398,7 +401,9 @@ pub fn get_deposit_data(
         )
     } else if value_token_1 > value_token_0 {
         let imbalance = (value_token_1 - value_token_0) * PrecDec::percent(50);
-        let additional_token_1 = imbalance.checked_mul(PrecDec::from_ratio(10u128.pow(decimals_1.into()), 1u128))? / prices.token_1_price;
+        let additional_token_1 = imbalance
+            .checked_mul(PrecDec::from_ratio(10u128.pow(decimals_1.into()), 1u128))?
+            / prices.token_1_price;
         (
             computed_amount_0,
             computed_amount_1
@@ -438,7 +443,8 @@ pub fn extract_withdrawal_amounts(
     result: &SubMsgResponse,
 ) -> Result<(Uint128, Uint128), ContractError> {
     let response_data = result
-        .msg_responses.first()
+        .msg_responses
+        .first()
         .ok_or(ContractError::NoResponseData)?
         .value
         .clone();
@@ -461,7 +467,8 @@ pub fn extract_withdrawal_amounts(
 
 pub fn extract_denom(result: &SubMsgResponse) -> Result<String, ContractError> {
     let response_data = result
-        .msg_responses.first()
+        .msg_responses
+        .first()
         .ok_or(ContractError::NoResponseData)?
         .value
         .clone();
@@ -524,7 +531,6 @@ pub fn get_deposited_token_amounts(
     Ok((total_amount_0, total_amount_1))
 }
 
-
 pub fn precdec_to_uint128(precdec: PrecDec) -> Result<Uint128, ContractError> {
     // Check if the value is negative
     if precdec < PrecDec::zero() {
@@ -546,7 +552,6 @@ pub fn precdec_to_uint128(precdec: PrecDec) -> Result<Uint128, ContractError> {
 }
 
 pub fn get_deposit_messages(
-    deps: &Deps,
     env: &Env,
     config: Config,
     tick_index: i64,
@@ -589,8 +594,12 @@ pub fn get_deposit_messages(
 
     // Calculate remaining amounts for ambient deposit
     if config.deposit_ambient {
-        let remaining_amount0 = token_0_balance.checked_sub(deposit_data.amount0).unwrap_or(Uint128::zero());
-        let remaining_amount1 = token_1_balance.checked_sub(deposit_data.amount1).unwrap_or(Uint128::zero());
+        let remaining_amount0 = token_0_balance
+            .checked_sub(deposit_data.amount0)
+            .unwrap_or(Uint128::zero());
+        let remaining_amount1 = token_1_balance
+            .checked_sub(deposit_data.amount1)
+            .unwrap_or(Uint128::zero());
 
         // Only create ambient deposit if there are remaining tokens
         if remaining_amount0 > Uint128::zero() || remaining_amount1 > Uint128::zero() {
@@ -614,7 +623,6 @@ pub fn get_deposit_messages(
     Ok(messages)
 }
 
-
 pub fn prepare_state(
     deps: &DepsMut,
     env: &Env,
@@ -623,7 +631,7 @@ pub fn prepare_state(
 ) -> Result<(Vec<CosmosMsg>, Uint128, Uint128), ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
     let target_tick_index_1 = index + config.base_fee as i64;
-    let target_tick_index_0 = (index * -1) + config.base_fee as i64;
+    let target_tick_index_0 = -index + config.base_fee as i64;
 
     let mut token_0_usable = config.balances.token_0.amount;
     let mut token_1_usable = config.balances.token_1.amount;
@@ -646,7 +654,9 @@ pub fn prepare_state(
     };
 
     // First swap simulation
-    if let Ok(response) = dex_querier.simulate_place_limit_order(Some(limit_order_msg_token_0.clone())) {
+    if let Ok(response) =
+        dex_querier.simulate_place_limit_order(Some(limit_order_msg_token_0.clone()))
+    {
         if let Some(result) = response.resp {
             if let (Some(coin_out), Some(coin_in)) = (result.taker_coin_out, result.taker_coin_in) {
                 let token_1_out = Uint128::from_str(&coin_out.amount).unwrap_or(Uint128::zero());
@@ -677,7 +687,9 @@ pub fn prepare_state(
     };
 
     // Second swap simulation
-    if let Ok(response) = dex_querier.simulate_place_limit_order(Some(limit_order_msg_token_1.clone())) {
+    if let Ok(response) =
+        dex_querier.simulate_place_limit_order(Some(limit_order_msg_token_1.clone()))
+    {
         if let Some(result) = response.resp {
             if let (Some(coin_out), Some(coin_in)) = (result.taker_coin_out, result.taker_coin_in) {
                 let token_0_out = Uint128::from_str(&coin_out.amount).unwrap_or(Uint128::zero());
@@ -694,4 +706,3 @@ pub fn prepare_state(
 
     Ok((messages, token_0_usable, token_1_usable))
 }
-
