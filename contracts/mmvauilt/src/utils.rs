@@ -241,13 +241,13 @@ pub fn get_prices(deps: Deps, env: Env) -> ContractResult<CombinedPriceResponse>
     // Get prices for token_0 and token_1, or default to 1 for valid currencies
     let pair_1 = config.pair_data.token_0.pair;
     let token_0_price =
-        get_price_or_default(&deps, &env, &pair_1, config.max_blocks_old)?.checked_mul(
+        get_price_or_default(&deps, &env, &pair_1, config.max_blocks_old)?.checked_div(
             PrecDec::from_ratio(10u128.pow(config.pair_data.token_0.decimals.into()), 1u128),
         )?;
 
     let pair_2 = config.pair_data.token_1.pair;
     let token_1_price =
-        get_price_or_default(&deps, &env, &pair_2, config.max_blocks_old)?.checked_mul(
+        get_price_or_default(&deps, &env, &pair_2, config.max_blocks_old)?.checked_div(
             PrecDec::from_ratio(10u128.pow(config.pair_data.token_1.decimals.into()), 1u128),
         )?;
 
