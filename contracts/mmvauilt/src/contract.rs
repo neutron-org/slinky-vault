@@ -121,6 +121,24 @@ pub fn execute(
             }
             dex_withdrawal(deps, _env, info)
         }
+        ExecuteMsg::UpdateConfig {
+            max_blocks_old,
+            base_fee,
+            base_deposit_percentage,
+            ambient_fee,
+            deposit_ambient,
+            deposit_cap,
+        } => update_config(
+            deps,
+            _env,
+            info,
+            max_blocks_old,
+            base_fee,
+            base_deposit_percentage,
+            ambient_fee,
+            deposit_ambient,
+            deposit_cap,
+        ),
     }
 }
 

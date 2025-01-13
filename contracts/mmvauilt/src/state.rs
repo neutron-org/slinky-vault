@@ -4,10 +4,8 @@ use neutron_std::types::slinky::types::v1::CurrencyPair;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub const CREATE_TOKEN_REPLY_ID: u64 = 1;
-pub const DEX_WITHDRAW_REPLY_ID: u64 = 2;
-pub const WITHDRAW_REPLY_ID: u64 = 3;
-pub const SHARES_MULTIPLIER: u64 = 1000;
+pub const DEX_WITHDRAW_REPLY_ID: u64 = 1;
+pub const CRON_MODULE_ADDRESS: &str = "neutron1cd6wafvehv79pm2yxth40thpyc7dc0yrqkyk95";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]

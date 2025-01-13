@@ -140,6 +140,14 @@ pub enum ExecuteMsg {
     // // cancels and withdraws all active and filled Limit orders
     DexDeposit {},
     DexWithdrawal {},
+    UpdateConfig {
+        max_blocks_old: Option<u64>,
+        base_fee: Option<u64>,
+        base_deposit_percentage: Option<u64>,
+        ambient_fee: Option<u64>,
+        deposit_ambient: Option<bool>,
+        deposit_cap: Option<Uint128>,
+    },
 }
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
