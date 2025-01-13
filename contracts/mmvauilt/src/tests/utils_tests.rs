@@ -13,24 +13,24 @@ use neutron_std::types::neutron::util::precdec::PrecDec;
 
 // (total_available_0, total_available_1, expected_amount_0, expected_amount_1, tick_index, fee, token_0_price, token_1_price, price_0_to_1, base_deposit_percentage, expected_result)
 // imbalance = 1900000 - 950000 / 2 = 475000 -> total = 50000 t0 , (100000 + 475000) t1
-#[test_case(1000000, 2000000, 0, 0, 0, 0, "1", "1", "1", 5, 6, 6 => DepositResult { amount0: Uint128::new(50000), amount1: Uint128::new(575000), tick_index: 0, fee: 0 }; "imbalance case")]
-#[test_case(1000000, 2000000, 0, 0, 0, 0, "1", "1", "1", 0, 6, 6 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(500000), tick_index: 0, fee: 0 }; "0% base deposit")]
-#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "1", "1", 50, 6, 6 => DepositResult { amount0: Uint128::new(500000), amount1: Uint128::new(500000), tick_index: 0, fee: 0 }; "balanced case")]
-#[test_case(1000000, 1000000, 0, 0, 0, 0, "2", "1", "2", 50, 6, 6 => DepositResult { amount0: Uint128::new(625000), amount1: Uint128::new(500000), tick_index: 0, fee: 0 }; "unequal token prices")]
-#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "2", "0.5", 50, 6, 6 => DepositResult { amount0: Uint128::new(500000), amount1: Uint128::new(625000), tick_index: 0, fee: 0 }; "inverse unequal token prices")]
-#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "2", "0.5", 100, 6, 6 => DepositResult { amount0: Uint128::new(1000000), amount1: Uint128::new(1000000), tick_index: 0, fee: 0 }; "100% deposit")]
-#[test_case(0, 1000000, 1000000, 0, 0, 0, "1", "1", "1", 5, 6, 6 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(50000), tick_index: 0, fee: 0 }; "one token unavailable")]
-#[test_case(0, 0, 1000000, 1000000, 0, 0, "1", "1", "1", 5, 6, 6 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(0), tick_index: 0, fee: 0 }; "both tokens unavailable")]
-#[test_case(1000000, 1000000, 0, 1000000, 0, 0, "1", "1", "1", 5, 6, 6 => DepositResult { amount0: Uint128::new(50000), amount1: Uint128::new(575000), tick_index: 0, fee: 0 }; "expected amount for one token")]
-#[test_case(1000000, 1000000, 1000000, 0, 0, 0, "1", "1", "1", 5, 6, 6 => DepositResult { amount0: Uint128::new(575000), amount1: Uint128::new(50000), tick_index: 0, fee: 0 }; "expected amount for other token")]
-#[test_case(500000, 1000000, 500000, 0, 0, 0, "1", "1", "1", 0, 6, 6 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(0), tick_index: 0, fee: 0 }; "0% deposit with expected amount balanced")]
-#[test_case(1000000, 1000000, 0, 1000000, 0, 0, "1", "1", "1", 0, 6, 6 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(500000), tick_index: 0, fee: 0 }; "0% deposit with expected amount imbalanced")]
-#[test_case(500000, 1000000, 500000, 0, 0, 0, "1", "1", "1", 1, 6, 6 => DepositResult { amount0: Uint128::new(10000), amount1: Uint128::new(10000), tick_index: 0, fee: 0 }; "1% deposit with expected amount")]
+#[test_case(1000000, 2000000, 0, 0, 0, 0, "1", "1", "1", 5 => DepositResult { amount0: Uint128::new(50000), amount1: Uint128::new(575000), tick_index: 0, fee: 0 }; "imbalance case")]
+#[test_case(1000000, 2000000, 0, 0, 0, 0, "1", "1", "1", 0 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(500000), tick_index: 0, fee: 0 }; "0% base deposit")]
+#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "1", "1", 50 => DepositResult { amount0: Uint128::new(500000), amount1: Uint128::new(500000), tick_index: 0, fee: 0 }; "balanced case")]
+#[test_case(1000000, 1000000, 0, 0, 0, 0, "2", "1", "2", 50 => DepositResult { amount0: Uint128::new(625000), amount1: Uint128::new(500000), tick_index: 0, fee: 0 }; "unequal token prices")]
+#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "2", "0.5", 50 => DepositResult { amount0: Uint128::new(500000), amount1: Uint128::new(625000), tick_index: 0, fee: 0 }; "inverse unequal token prices")]
+#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "2", "0.5", 100=> DepositResult { amount0: Uint128::new(1000000), amount1: Uint128::new(1000000), tick_index: 0, fee: 0 }; "100% deposit")]
+#[test_case(0, 1000000, 1000000, 0, 0, 0, "1", "1", "1", 5 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(50000), tick_index: 0, fee: 0 }; "one token unavailable")]
+#[test_case(0, 0, 1000000, 1000000, 0, 0, "1", "1", "1", 5 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(0), tick_index: 0, fee: 0 }; "both tokens unavailable")]
+#[test_case(1000000, 1000000, 0, 1000000, 0, 0, "1", "1", "1", 5 => DepositResult { amount0: Uint128::new(50000), amount1: Uint128::new(575000), tick_index: 0, fee: 0 }; "expected amount for one token")]
+#[test_case(1000000, 1000000, 1000000, 0, 0, 0, "1", "1", "1", 5 => DepositResult { amount0: Uint128::new(575000), amount1: Uint128::new(50000), tick_index: 0, fee: 0 }; "expected amount for other token")]
+#[test_case(500000, 1000000, 500000, 0, 0, 0, "1", "1", "1", 0 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(0), tick_index: 0, fee: 0 }; "0% deposit with expected amount balanced")]
+#[test_case(1000000, 1000000, 0, 1000000, 0, 0, "1", "1", "1", 0 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(500000), tick_index: 0, fee: 0 }; "0% deposit with expected amount imbalanced")]
+#[test_case(500000, 1000000, 500000, 0, 0, 0, "1", "1", "1", 1 => DepositResult { amount0: Uint128::new(10000), amount1: Uint128::new(10000), tick_index: 0, fee: 0 }; "1% deposit with expected amount")]
 // value 0 = 1000000
 // value 1 = 1100000
 // imbalance = 1100000 - 1000000 / 2 = 50000
 // additional token 1 = 50000 / 1.1 = 45454.54 -> 45454
-#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "1.1", "1", 0, 6, 6 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(45454), tick_index: 0, fee: 0 }; "slight price difference")]
+#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "1.1", "1", 0 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(45454), tick_index: 0, fee: 0 }; "slight price difference")]
 // computed_amount_0 = 1000000 * 0.05 = 50000
 // computed_amount_1 = 1000000 * 0.05 = 50000
 // value 0 = 1000000 - 50000 = 950000 * 1 = 950000
@@ -39,9 +39,9 @@ use neutron_std::types::neutron::util::precdec::PrecDec;
 // additional token 1 = 47500 / 1.1 = 43181.81 -> 43181
 // total 0 = 50000
 // total 1 = 50000 + 43181 = 93181
-#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "1.1", "1", 5, 6, 6 => DepositResult { amount0: Uint128::new(50000), amount1: Uint128::new(93181), tick_index: 0, fee: 0 }; "slight price difference with 5% deposit")]
-#[test_case(1000000, 1000000, 1000000, 1000000, 0, 0, "1", "1", "1", 1, 6, 6 => DepositResult { amount0: Uint128::new(20000), amount1: Uint128::new(20000), tick_index: 0, fee: 0 }; "expected amounts with 1% deposit")]
-#[test_case(1000000, 1000000, 2000000, 2000000, 0, 0, "1", "1", "1", 100, 6, 6 => DepositResult { amount0: Uint128::new(1000000), amount1: Uint128::new(1000000), tick_index: 0, fee: 0 }; "capped deposit amounts")]
+#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "1.1", "1", 5 => DepositResult { amount0: Uint128::new(50000), amount1: Uint128::new(93181), tick_index: 0, fee: 0 }; "slight price difference with 5% deposit")]
+#[test_case(1000000, 1000000, 1000000, 1000000, 0, 0, "1", "1", "1", 1 => DepositResult { amount0: Uint128::new(20000), amount1: Uint128::new(20000), tick_index: 0, fee: 0 }; "expected amounts with 1% deposit")]
+#[test_case(1000000, 1000000, 2000000, 2000000, 0, 0, "1", "1", "1", 100 => DepositResult { amount0: Uint128::new(1000000), amount1: Uint128::new(1000000), tick_index: 0, fee: 0 }; "capped deposit amounts")]
 // computed_amount_0 = 1000000 * 0.1 = 100000
 // computed_amount_1 = 1000000 * 0.1 = 100000
 // value 0 = 1000000 - 100000 = 900000 * 1 = 900000
@@ -50,7 +50,7 @@ use neutron_std::types::neutron::util::precdec::PrecDec;
 // additional token 1 = 89550000 / 200 = 447750
 // total 0 = 100000
 // total 1 = 100000 + 447750 = 547750
-#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "200", "1", 10, 6, 6 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(547750), tick_index: 0, fee: 0 }; "large price difference")]
+#[test_case(1000000, 1000000, 0, 0, 0, 0, "1", "200", "1", 10 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(547750), tick_index: 0, fee: 0 }; "large price difference")]
 fn test_get_deposit_data(
     total_available_0: u128,
     total_available_1: u128,
@@ -62,8 +62,6 @@ fn test_get_deposit_data(
     token_1_price: &str,
     price_0_to_1: &str,
     base_deposit_percentage: u64,
-    decimals_0: u8,
-    decimals_1: u8,
 ) -> DepositResult {
     let prices = CombinedPriceResponse {
         token_0_price: PrecDec::from_str(token_0_price).unwrap(),
@@ -78,8 +76,6 @@ fn test_get_deposit_data(
         fee,
         &prices,
         base_deposit_percentage,
-        decimals_0,
-        decimals_1,
     )
     .unwrap()
 }

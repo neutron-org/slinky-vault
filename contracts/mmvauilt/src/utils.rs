@@ -374,9 +374,7 @@ pub fn get_deposit_data(
     tick_index: i64,
     fee: u64,
     prices: &CombinedPriceResponse,
-    base_deposit_percentage: u64,
-    decimals_0: u8,
-    decimals_1: u8,
+    base_deposit_percentage: u64
 ) -> Result<DepositResult, ContractError> {
     // Calculate the base deposit amounts
     let computed_amount_0 = total_available_0.multiply_ratio(base_deposit_percentage, 100u128);
@@ -568,9 +566,7 @@ pub fn get_deposit_messages(
         tick_index,
         config.base_fee,
         &prices,
-        config.base_deposit_percentage,
-        config.pair_data.token_0.decimals,
-        config.pair_data.token_1.decimals,
+        config.base_deposit_percentage
     )?;
 
     // Only create base deposit message if amounts are greater than zero
