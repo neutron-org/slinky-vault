@@ -3,7 +3,7 @@ use crate::msg::InstantiateMsg;
 use crate::state::{CONFIG, CRON_MODULE_ADDRESS, DEX_WITHDRAW_REPLY_ID};
 use crate::utils::*;
 use cosmwasm_std::{
-    Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult, Uint128,
+    Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult, Uint128, Coin, BankMsg,
 };
 use neutron_std::types::neutron::dex::{DexQuerier, MsgWithdrawal, QueryAllUserDepositsResponse};
 
@@ -58,41 +58,59 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
 
 pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     // Load the contract configuration to access the owner address and balances
-    let config = CONFIG.load(deps.storage)?;
-    let mut messages: Vec<SubMsg> = vec![];
+    let mut config = CONFIG.load(deps.storage)?;
+    let mut messages: Vec<CosmosMsg> = vec![];
 
     if info.sender != config.owner {
         return Err(ContractError::Unauthorized {});
     }
 
-    let dex_querier = DexQuerier::new(&deps.querier);
-    let res: QueryAllUserDepositsResponse =
-        dex_querier.user_deposits_all(env.contract.address.to_string(), None, true)?;
-
-    // Add all withdrawals except the last one without reply
-    for deposit in res.deposits.iter() {
-        let withdraw_msg = Into::<CosmosMsg>::into(MsgWithdrawal {
-            creator: env.contract.address.to_string(),
-            receiver: env.contract.address.to_string(),
-            token_a: config.pair_data.token_0.denom.clone(),
-            token_b: config.pair_data.token_1.denom.clone(),
-            shares_to_remove: vec![deposit.shares_owned.parse().expect("Failed to parse")],
-            tick_indexes_a_to_b: vec![deposit.center_tick_index],
-            fees: vec![deposit.fee],
-        });
-        messages.push(SubMsg::new(withdraw_msg));
+    // Query current contract balances
+    let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
+    
+    // Create bank send messages for both tokens
+    if balances[0].amount > Uint128::zero() {
+        messages.push(
+            BankMsg::Send {
+                to_address: info.sender.to_string(),
+                amount: vec![Coin {
+                    denom: balances[0].denom.clone(),
+                    amount: balances[0].amount,
+                }],
+            }
+            .into(),
+        );
     }
+    if balances[1].amount > Uint128::zero() {
+        messages.push(
+            BankMsg::Send {
+                to_address: info.sender.to_string(),
+                amount: vec![Coin {
+                    denom: balances[1].denom.clone(),
+                    amount: balances[1].amount,
+                }],
+            }
+            .into(),
+        );
+    }
+
+    // Update config balances to zero
+    config.balances.token_0.amount = Uint128::zero();
+    config.balances.token_1.amount = Uint128::zero();
+    CONFIG.save(deps.storage, &config)?;
 
     // Add the message to the response and return
     Ok(Response::new()
-        .add_submessages(messages)
-        .add_attribute("action", "withdrawal"))
+        .add_messages(messages)
+        .add_attribute("action", "withdrawal")
+        .add_attribute("token_0_amount", balances[0].amount.to_string())
+        .add_attribute("token_1_amount", balances[1].amount.to_string()))
 }
 
 // depends on up-to-date config
 pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     // Load the contract configuration
-    let config = CONFIG.load(deps.storage)?;
+    let mut config = CONFIG.load(deps.storage)?;
     let mut messages: Vec<CosmosMsg> = vec![];
 
     let cron_address = Addr::unchecked(CRON_MODULE_ADDRESS);
@@ -100,6 +118,12 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     if info.sender != config.owner && info.sender != cron_address {
         return Err(ContractError::Unauthorized {});
     }
+    let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
+
+    config.balances.token_0.amount = balances[0].amount;
+    config.balances.token_1.amount = balances[1].amount; 
+    
+    CONFIG.save(deps.storage, &config)?;
 
     // get the current slinky price and tick index
     let prices: crate::msg::CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
@@ -138,7 +162,7 @@ pub fn dex_withdrawal(
     }
 
     // Prepare a vector to hold withdrawals
-    let mut messages: Vec<SubMsg> = vec![];
+    let mut messages: Vec<CosmosMsg> = vec![];
     // Check if there are any active deposits
     let dex_querier = DexQuerier::new(&deps.querier);
     let res: QueryAllUserDepositsResponse =
@@ -160,37 +184,15 @@ pub fn dex_withdrawal(
         });
 
         // Wrap the DexMsg into a SubMsg with reply
-        messages.push(SubMsg::reply_always(withdraw_msg, DEX_WITHDRAW_REPLY_ID));
+        messages.push(withdraw_msg);
     }
 
     // Add the message to the response and return
     Ok(Response::new()
-        .add_submessages(messages)
+        .add_messages(messages)
         .add_attribute("action", "dex_withdrawal"))
 }
 
-pub fn handle_dex_withdrawal_reply(
-    deps: DepsMut,
-    env: Env,
-    msg_result: SubMsgResult,
-) -> Result<Response, ContractError> {
-    match msg_result {
-        SubMsgResult::Ok(result) => {
-            let mut config = CONFIG.load(deps.storage)?;
-            let (amount0, amount1) = extract_withdrawal_amounts(&result)?;
-
-            config.balances.token_0.amount += amount0;
-            config.balances.token_1.amount += amount1;
-
-            CONFIG.save(deps.storage, &config)?;
-
-            Ok(Response::new().add_attribute("action", "withdrawal_reply_success"))
-        }
-        SubMsgResult::Err(err) => Ok(Response::new()
-            .add_attribute("action", "withdrawal_reply_error")
-            .add_attribute("error", err)),
-    }
-}
 
 pub fn update_config(
     deps: DepsMut,

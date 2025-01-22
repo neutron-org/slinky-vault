@@ -155,14 +155,3 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
     }
 }
 
-/////////////
-/// REPLY ///
-/////////////
-
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
-    match msg.id {
-        1 => handle_dex_withdrawal_reply(deps, env, msg.result),
-        id => Err(ContractError::UnknownReplyId { id }),
-    }
-}

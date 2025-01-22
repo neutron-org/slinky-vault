@@ -56,12 +56,6 @@ pub fn query_oracle_currency_pairs(deps: &Deps) -> ContractResult<Vec<CurrencyPa
     Ok(oracle_currency_pairs_response.currency_pairs)
 }
 
-pub fn query_marketmap_market_map(deps: &Deps) -> ContractResult<MarketMap> {
-    let querier = MarketmapQuerier::new(&deps.querier);
-    let marketmap_currency_pairs_response = querier.market_map()?;
-    Ok(marketmap_currency_pairs_response.market_map.unwrap())
-}
-
 pub fn validate_market(
     deps: &Deps,
     env: &Env,
@@ -76,7 +70,6 @@ pub fn validate_market(
     // get price response here to avoid querying twice on recent and not_nil checks
     let price_response = query_oracle_price(deps, pair)?;
     validate_market_supported_xoracle(deps, pair, None)?;
-    validate_market_supported_xmarketmap(deps, pair, None)?;
     //validate_market_enabled(deps, &pair, None)?;
     validate_price_recent(
         deps,
@@ -158,27 +151,6 @@ pub fn validate_market_supported_xoracle(
             symbol: pair.base.clone(),
             quote: pair.quote.clone(),
             location: "x/oracle".to_string(),
-        });
-    }
-
-    Ok(Response::new())
-}
-
-pub fn validate_market_supported_xmarketmap(
-    deps: &Deps,
-    pair: &CurrencyPair,
-    market_map: Option<MarketMap>,
-) -> ContractResult<Response> {
-    let map = match market_map {
-        Some(map) => map,
-        None => query_marketmap_market_map(deps)?,
-    };
-    let key: String = format!("{}/{}", pair.base, pair.quote);
-    if !map.markets.contains_key(&key) {
-        return Err(ContractError::UnsupportedMarket {
-            symbol: pair.base.clone(),
-            quote: pair.quote.clone(),
-            location: "x/marketmap".to_string(),
         });
     }
 
