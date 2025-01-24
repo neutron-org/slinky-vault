@@ -101,7 +101,10 @@ pub fn validate_price_recent(
             symbol: pair.base.clone(),
             quote: pair.quote.clone(),
         })?;
-    if (current_block_height - price.block_height) > max_blocks_old {
+
+    if current_block_height < price.block_height
+        || current_block_height.saturating_sub(price.block_height) > max_blocks_old
+    {
         return Err(ContractError::PriceTooOld {
             symbol: pair.base.clone(),
             quote: pair.quote.clone(),
@@ -598,8 +601,8 @@ pub fn prepare_state(
     index: i64,
 ) -> Result<(Vec<CosmosMsg>, Uint128, Uint128), ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
-    let target_tick_index_1 = index + config.base_fee as i64;
-    let target_tick_index_0 = -index + config.base_fee as i64;
+    let target_tick_index_0 = index + config.base_fee as i64;
+    let target_tick_index_1 = -index + config.base_fee as i64;
 
     let mut token_0_usable = config.balances.token_0.amount;
     let mut token_1_usable = config.balances.token_1.amount;

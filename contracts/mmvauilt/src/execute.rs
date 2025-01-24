@@ -22,21 +22,18 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
     if sent_funds.is_empty() {
         return Err(ContractError::NoFundsSent {});
     }
-    let mut token0_deposited = Uint128::zero();
-    let mut token1_deposited = Uint128::zero();
+
     // Iterate through the sent funds if the denoms match the expected vault denom, and are greater than zero we add them to the config balances.
     for coin in sent_funds.iter() {
         if coin.denom == config.balances.token_0.denom {
             if coin.amount == Uint128::zero() {
                 return Err(ContractError::InvalidTokenAmount);
             }
-            token0_deposited += coin.amount;
             config.balances.token_0.amount += coin.amount;
         } else if coin.denom == config.balances.token_1.denom {
             if coin.amount == Uint128::zero() {
                 return Err(ContractError::InvalidTokenAmount);
             }
-            token1_deposited += coin.amount;
             config.balances.token_1.amount += coin.amount;
         } else {
             // Return an error if an unsupported token is sent
@@ -113,7 +110,8 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     let mut config = CONFIG.load(deps.storage)?;
     let mut messages: Vec<CosmosMsg> = vec![];
 
-    let cron_address = Addr::unchecked(CRON_MODULE_ADDRESS);
+    let cron_address = deps.api.addr_validate(CRON_MODULE_ADDRESS)?;
+
     // if the caller is not the owner or the cron module, return an error
     if info.sender != config.owner && info.sender != cron_address {
         return Err(ContractError::Unauthorized {});
@@ -154,7 +152,7 @@ pub fn dex_withdrawal(
 ) -> Result<Response, ContractError> {
     // Load the contract configuration to access the owner address and balances
     let config = CONFIG.load(deps.storage)?;
-    let cron_address = Addr::unchecked(CRON_MODULE_ADDRESS);
+    let cron_address = deps.api.addr_validate(CRON_MODULE_ADDRESS)?;
 
     // if the caller is not the owner or the cron module, return an error
     if info.sender != config.owner && info.sender != cron_address {

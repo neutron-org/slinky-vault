@@ -38,13 +38,9 @@ pub fn instantiate(
     let token_a = msg.token_a.clone();
     let token_b = msg.token_b.clone();
     let (tokens, id) = sort_token_data_and_get_pair_id_str(&token_a, &token_b);
-    let deps_readonly = Deps {
-        storage: deps.storage,
-        api: deps.api,
-        querier: deps.querier,
-    };
-    validate_market(&deps_readonly, &_env, &msg.token_a.pair, msg.max_block_old)?;
-    validate_market(&deps_readonly, &_env, &msg.token_b.pair, msg.max_block_old)?;
+
+    validate_market(&deps.as_ref(), &_env, &msg.token_a.pair, msg.max_block_old)?;
+    validate_market(&deps.as_ref(), &_env, &msg.token_b.pair, msg.max_block_old)?;
 
     let pairs = PairData {
         token_0: tokens[0].clone(),
