@@ -1,0 +1,27 @@
+[package]
+name = "slinky-oracle"
+version = "0.1.0"
+description = "slinky oracle contract"
+edition = { workspace = true }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+library = []
+
+[dependencies]
+serde_json = "1.0"
+schemars = {  workspace = true }
+serde = { version = "1.0.180", default-features = false, features = ["derive"] }
+cosmwasm-std = { workspace = true }
+cw2 = {  workspace = true }
+cw-storage-plus = { workspace = true }
+thiserror = { workspace = true }
+test-case = { workspace = true }
+neutron-std = { git = "https://github.com/neutron-org/neutron-std", rev = "bfe745f7a7080f681dfef97d053932897cbe0f6e" }
+prost = { workspace = true }
+prost-types = { workspace = true }
+
+[dev-dependencies]
+cosmwasm-schema = { workspace = true }

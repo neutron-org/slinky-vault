@@ -1,8 +1,8 @@
 use crate::{
     error::{ContractError, ContractResult},
-    state::TokenData,
+    state::{FeeTier, FeeTierConfig, TokenData},
 };
-use cosmwasm_std::{Coin, Response, Uint128};
+use cosmwasm_std::{Addr, Coin, Response, Uint128};
 use neutron_std::types::neutron::util::precdec::PrecDec;
 use prost::Message;
 use schemars::JsonSchema;
@@ -26,20 +26,24 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
-    pub owner: String,
+    pub whitelist: Vec<String>,
     pub token_a: TokenData,
     pub token_b: TokenData,
-    pub max_block_old: u64,
-    pub base_fee: u64,
-    pub base_deposit_percentage: u64,
-    pub ambient_fee: u64,
-    pub deposit_ambient: bool,
+    pub fee_tier_config: FeeTierConfig,
     pub deposit_cap: Uint128,
+    pub timestamp_stale: u64,
+    pub paused: bool,
+    pub oracle_contract: String,
 }
 
 impl InstantiateMsg {
     pub fn validate(&self) -> ContractResult<()> {
-        self.check_empty(self.owner.clone(), "beneficiary".to_string())?;
+        if self.whitelist.is_empty() {
+            return Err(ContractError::EmptyValue {
+                kind: "whitelist".to_string(),
+            });
+        }
+
         self.check_empty(self.token_a.denom.clone(), "token_a denom".to_string())?;
         self.check_empty(self.token_b.denom.clone(), "token_b denom".to_string())?;
         self.check_empty(
@@ -51,7 +55,13 @@ impl InstantiateMsg {
             "token_b symbol (base)".to_string(),
         )?;
 
-        if self.max_block_old > 0 {
+        if self.token_a.max_blocks_old <= 0 {
+            return Err(ContractError::MalformedInput {
+                input: "max_block_stale".to_string(),
+                reason: "must be >=1".to_string(),
+            });
+        }
+        if self.token_b.max_blocks_old <= 0 {
             return Err(ContractError::MalformedInput {
                 input: "max_block_stale".to_string(),
                 reason: "must be >=1".to_string(),
@@ -59,8 +69,7 @@ impl InstantiateMsg {
         }
         Self::validate_denom(&self.token_a.denom)?;
         Self::validate_denom(&self.token_b.denom)?;
-        Self::validate_base_fee(self.base_fee)?;
-        Self::validate_base_deposit_percentage(self.base_deposit_percentage)?;
+        Self::validate_fee_tier_config(&self.fee_tier_config)?;
 
         if self.token_a.pair.quote == self.token_b.pair.quote && self.token_b.pair.quote != "USD" {
             return Err(ContractError::OnlySupportUsdQuote {
@@ -71,24 +80,26 @@ impl InstantiateMsg {
         Ok(())
     }
 
-    pub fn validate_base_fee(fee: u64) -> ContractResult<Response> {
-        // TODO: GET FROM DEX, for now Define the allowed fees array
-        let allowed_fees: [u64; 12] = [0, 1, 2, 3, 4, 5, 10, 20, 50, 100, 150, 200];
+    pub fn validate_fee_tier_config(config: &FeeTierConfig) -> ContractResult<Response> {
+        let mut total_percentage = 0u64;
 
-        // Check if the fee is in the allowed_fees array
-        if !allowed_fees.contains(&fee) {
-            return Err(ContractError::InvalidBaseFee { fee });
+        // Check each fee tier
+        for tier in &config.fee_tiers {
+            if tier.percentage < 0 {
+                return Err(ContractError::InvalidFeeTier {
+                    reason: "Fee tier cannot be negative".to_string(),
+                });
+            }
+            total_percentage += tier.percentage;
         }
 
-        // If fee is valid, return Ok with an empty response
-        Ok(Response::new())
-    }
-    pub fn validate_base_deposit_percentage(percentage: u64) -> ContractResult<Response> {
-        if percentage > 100 {
-            return Err(ContractError::InvalidDepositPercentage { percentage });
+        // Ensure total percentage is less than 100%
+        if total_percentage > 100 {
+            return Err(ContractError::InvalidFeeTier {
+                reason: "Total fee tier percentages must be <= 100%".to_string(),
+            });
         }
 
-        // If percentage is valid, return Ok with an empty response
         Ok(Response::new())
     }
     fn validate_denom(denom: &str) -> ContractResult<Response> {
@@ -148,14 +159,23 @@ pub enum ExecuteMsg {
     // PurgeAnddWithdraw {},
     // // helper to atomically purge and pause
     // PurgeAndPause {},
+    UpdateConfig {
+        whitelist: Option<Vec<String>>,
+        max_blocks_old_token_a: Option<u64>,
+        max_blocks_old_token_b: Option<u64>,
+        deposit_cap: Option<Uint128>,
+        timestamp_stale: Option<u64>,
+        fee_tier_config: Option<FeeTierConfig>,
+        paused: Option<bool>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetFormated {},
     GetDeposits {},
     GetConfig {},
+    GetPrices {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]

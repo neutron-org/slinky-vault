@@ -2,26 +2,44 @@ use crate::error::{ContractError, ContractResult};
 use crate::execute::*;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload};
 use crate::query::*;
-use crate::state::{Balances, Config, PairData, CONFIG};
+use crate::state::{Balances, Config, FeeTierConfig, FeeTier, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_WITHDRAW_REPLY_ID, WITHDRAW_REPLY_ID};
 use crate::utils::*;
 use cosmwasm_std::{
-    attr, entry_point, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
+    attr, entry_point, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128, Addr, BankMsg, CosmosMsg, SubMsg
 };
 use cw2::set_contract_version;
 use prost::Message;
 use std::str::FromStr;
+use serde_json::to_vec;
+
+
+const CONTRACT_NAME: &str = concat!("crates.io:neutron-contracts__", env!("CARGO_PKG_NAME"));
+const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 ///////////////
 /// MIGRATE ///
 ///////////////
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> ContractResult<Response> {
-    unimplemented!()
+pub fn migrate(
+    deps: DepsMut,
+    _env: Env,
+    _msg: MigrateMsg,
+) -> Result<Response, ContractError> {
+    // Set the new contract version
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    let config = CONFIG.load(deps.storage)?;
+
+    CONFIG.save(deps.storage, &config)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "migrate")
+        .add_attribute("from_version", CONTRACT_VERSION)
+        .add_attribute("to_version", CONTRACT_VERSION)
+        .add_attribute("contract", CONTRACT_NAME))
 }
 
-const CONTRACT_NAME: &str = concat!("crates.io:neutron-contracts__", env!("CARGO_PKG_NAME"));
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 ///////////////////
 /// INSTANTIATE ///
@@ -36,7 +54,11 @@ pub fn instantiate(
 ) -> ContractResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     msg.validate()?;
-    let owner = deps.api.addr_validate(&msg.owner)?;
+    let whitelist = msg
+        .whitelist
+        .iter()
+        .map(|addr| deps.api.addr_validate(addr).map_err(ContractError::Std))
+        .collect::<Result<Vec<Addr>, ContractError>>()?;
     let token_a = msg.token_a.clone();
     let token_b = msg.token_b.clone();
     let (tokens, id) = sort_token_data_and_get_pair_id_str(&token_a, &token_b);
@@ -45,8 +67,8 @@ pub fn instantiate(
         api: deps.api,
         querier: deps.querier,
     };
-    validate_market(&deps_readonly, &_env, &msg.token_a.pair, msg.max_block_old)?;
-    validate_market(&deps_readonly, &_env, &msg.token_b.pair, msg.max_block_old)?;
+
+    let oracle_contract = deps_readonly.api.addr_validate(&msg.oracle_contract)?;
 
     let pairs = PairData {
         token_0: tokens[0].clone(),
@@ -59,28 +81,30 @@ pub fn instantiate(
         token_1: Coin::new(Uint128::zero(), tokens[1].denom.clone()),
     };
 
+    let fee_tier: FeeTier = FeeTier { fee: 0, percentage: 0 };
+    let fee_tier_config = FeeTierConfig { fee_tiers: vec![fee_tier] };
     let config = Config {
         pair_data: pairs.clone(),
-        max_blocks_old: msg.max_block_old,
         balances,
-        base_fee: msg.base_fee,
-        base_deposit_percentage: msg.base_deposit_percentage,
-        ambient_fee: msg.ambient_fee,
-        deposit_ambient: msg.deposit_ambient,
+        fee_tier_config,
         lp_denom: "".to_string(),
         total_shares: Uint128::zero(),
-        owner,
+        whitelist,
         deposit_cap: msg.deposit_cap,
+        timestamp_stale: msg.timestamp_stale,
+        paused: msg.paused,
+        oracle_contract: oracle_contract.clone(),
     };
 
     // PAIRDATA.save(deps.storage, &pool_data)?;
     CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new()
-        .add_attribute("action", "instantiate")
+        .add_attribute("action", "noop")
         .add_attributes([
-            attr("owner", config.owner.to_string()),
-            attr("max_blocks_stale", config.max_blocks_old.to_string()),
+            attr("owner", format!("{:?}", config.whitelist)),
+            attr("max_blocks_stale_token_a", config.pair_data.token_0.max_blocks_old.to_string()),
+            attr("max_blocks_stale_token_b", config.pair_data.token_1.max_blocks_old.to_string()),
             attr("token_0_denom", pairs.token_0.denom),
             attr("token_0_symbol", pairs.token_0.pair.base),
             attr("token_0_quote_currency", pairs.token_0.pair.quote),
@@ -106,10 +130,17 @@ pub fn execute(
         ExecuteMsg::Deposit { .. } => deposit(deps, _env, info),
         ExecuteMsg::Withdraw { amount } => {
             // Prevent tokens from being sent with the Withdraw message
-            if !info.funds.is_empty() {
+            if info.funds.len() != 1 {
                 return Err(ContractError::FundsNotAllowed);
             }
-            withdraw(deps, _env, info, amount)
+
+            let config = CONFIG.load(deps.storage)?;
+            let lp_token = info.funds.first().unwrap();
+
+            if lp_token.denom != config.lp_denom || lp_token.amount != amount {
+                return Err(ContractError::LpTokenError);
+            }
+            withdraw(deps, _env, info, amount, config)
         }
         ExecuteMsg::DexDeposit { .. } => {
             // Prevent tokens from being sent with the Withdraw message
@@ -132,6 +163,24 @@ pub fn execute(
             }
             execute_create_token(deps, _env, info)
         }
+        ExecuteMsg::UpdateConfig { whitelist, max_blocks_old_token_a, max_blocks_old_token_b, deposit_cap, timestamp_stale, fee_tier_config, paused} => {
+            // Prevent tokens from being sent with the Withdraw message
+            if !info.funds.is_empty() {
+                return Err(ContractError::FundsNotAllowed);
+            }
+            update_config(
+                deps,
+                _env,
+                info,
+                whitelist,
+                max_blocks_old_token_a,
+                max_blocks_old_token_b,
+                deposit_cap,
+                timestamp_stale,
+                fee_tier_config,
+                paused,
+            )
+        }
     }
 }
 
@@ -142,9 +191,13 @@ pub fn execute(
 #[entry_point]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
     match msg {
-        QueryMsg::GetFormated {} => query_recent_valid_prices_formatted(deps, _env),
         QueryMsg::GetDeposits {} => q_dex_deposit(deps, _env),
         QueryMsg::GetConfig {} => query_config(deps, _env),
+        QueryMsg::GetPrices {} => {
+            let prices = get_prices(deps, _env)?;
+            let serialized_prices = to_vec(&prices).map_err(|_| ContractError::SerializationError)?;
+            Ok(Binary::from(serialized_prices))
+        }
     }
 }
 
@@ -154,12 +207,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+    deps.api.debug(&format!(">>>>>Processing reply with ID: {}", msg.id));
     match msg.id {
-        1 => handle_create_token_reply(deps, msg.result),
-        2 => handle_dex_withdrawal_reply(deps, env, msg.result),
-        3 => {
+        CREATE_TOKEN_REPLY_ID => handle_create_token_reply(deps, msg.result),
+        WITHDRAW_REPLY_ID => {
+            // Handle withdrawal reply
             let response = msg.result.clone().into_result().unwrap();
-            // Decode the protobuf payload
             let payload = WithdrawPayload::decode(
                 response
                     .msg_responses
@@ -170,12 +223,11 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
             )
             .map_err(|_| ContractError::ParseError)?;
 
-            // Convert amount string to Uint128
-            let amount =
-                Uint128::from_str(&payload.amount).map_err(|_| ContractError::ParseError)?;
+            let amount = Uint128::from_str(&payload.amount).map_err(|_| ContractError::ParseError)?;
 
             handle_withdrawal_reply(deps, env, msg.result, amount, payload.sender)
         }
+        DEX_WITHDRAW_REPLY_ID => handle_dex_withdrawal_reply(deps, env, msg.result),
         id => Err(ContractError::UnknownReplyId { id }),
     }
 }

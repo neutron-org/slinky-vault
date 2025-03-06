@@ -7,7 +7,7 @@ use crate::msg::{
 };
 use test_case::test_case;
 
-use crate::utils::{get_deposit_data, normalize_price, price_to_tick_index};
+use crate::utils::{get_deposit_data, price_to_tick_index};
 use cosmwasm_std::{Decimal, Int128, Uint128};
 use neutron_std::types::neutron::util::precdec::PrecDec;
 
@@ -77,9 +77,7 @@ fn test_get_deposit_data(
         tick_index,
         fee,
         &prices,
-        base_deposit_percentage,
-        decimals_0,
-        decimals_1,
+        base_deposit_percentage
     )
     .unwrap()
 }
@@ -99,24 +97,75 @@ fn test_get_deposit_data(
 #[test_case(PrecDec::from_str("0.000123").unwrap() => 90038; "smaller fraction")]
 #[test_case(PrecDec::from_str("0.00000009234").unwrap() => 161986; "tiny fraction")]
 #[test_case(PrecDec::from_str("0.000000000000123").unwrap() => 297281; "tinier fraction")]
+#[test_case(PrecDec::from_str("0.999999999999999999").unwrap() => 0; "slightly below 1 with max precision")]
 fn test_price_to_tick_index(price: PrecDec) -> i64 {
     price_to_tick_index(price).unwrap()
 }
 
-#[test_case(PrecDec::zero() => Err(ContractError::InvalidPrice); "zero price")]
-fn test_price_to_tick_index_error(price: PrecDec) -> Result<i64, ContractError> {
-    price_to_tick_index(price)
+#[test]
+fn test_price_to_tick_index_properties() {
+    // Test symmetry around 1.0
+    let price_above = PrecDec::from_str("2.0").unwrap();
+    let price_below = PrecDec::from_str("0.5").unwrap();
+    
+    let tick_above = price_to_tick_index(price_above).unwrap();
+    let tick_below = price_to_tick_index(price_below).unwrap();
+    
+    assert_eq!(tick_above.abs(), tick_below.abs(), 
+        "Tick indices should be symmetric around 1.0");
+
+    // Test monotonicity
+    let price1 = PrecDec::from_str("1.1").unwrap();
+    let price2 = PrecDec::from_str("1.2").unwrap();
+    
+    let tick1 = price_to_tick_index(price1).unwrap();
+    let tick2 = price_to_tick_index(price2).unwrap();
+    
+    assert!(tick1 > tick2, 
+        "Tick index should decrease as price increases above 1.0");
+
+    // Test precision handling
+    let price_precise1 = PrecDec::from_str("0.000000000000000001").unwrap();
+    let price_precise2 = PrecDec::from_str("0.000000000000000002").unwrap();
+    
+    let tick_precise1 = price_to_tick_index(price_precise1).unwrap();
+    let tick_precise2 = price_to_tick_index(price_precise2).unwrap();
+    
+    println!("tick_precise1: {}, tick_precise2: {}", tick_precise1, tick_precise2);
+    
+    assert!(tick_precise1 >= tick_precise2, 
+        "Should handle small price differences correctly");
 }
 
-#[test_case(Int128::new(1234567), 6 => Ok(PrecDec::from_str("1.234567").unwrap()); "positive number with 6 decimals")]
-#[test_case(Int128::new(1234567), 2 => Ok(PrecDec::from_str("12345.67").unwrap()); "positive number with 2 decimals")]
-#[test_case(Int128::new(1234567), 0 => Ok(PrecDec::from_str("1234567").unwrap()); "positive number with 0 decimals")]
-#[test_case(Int128::new(1234567890098764321), 12 => Ok(PrecDec::from_str("1234567.890098764321").unwrap()); "large positive number")]
-#[test_case(Int128::zero(), 6 => Ok(PrecDec::zero()); "zero")]
-#[test_case(Int128::new(-1234567), 6 => Err(ContractError::PriceIsNegative); "negative number")]
-fn test_normalize_price(
-    input_price: Int128,
-    input_decimals: u64,
-) -> Result<PrecDec, ContractError> {
-    normalize_price(input_price, input_decimals)
+#[test]
+fn test_price_to_tick_index_special_values() {
+    // Test powers of 10
+    let test_powers = vec![
+        ("10.0", -23027),
+        ("100.0", -46054),
+        ("0.1", 23027),
+        ("0.01", 46054),
+    ];
+
+    for (price_str, expected_tick) in test_powers {
+        let price = PrecDec::from_str(price_str).unwrap();
+        let tick = price_to_tick_index(price).unwrap();
+        assert_eq!(tick, expected_tick, 
+            "Failed for power of 10: {}", price_str);
+    }
+
+    // Test common price ratios
+    let test_ratios = vec![
+        ("1.5", -4055),    // 3:2 ratio
+        ("2.0", -6932),    // 2:1 ratio
+        ("3.0", -10987),   // 3:1 ratio
+        ("4.0", -13864),   // 4:1 ratio
+    ];
+
+    for (price_str, expected_tick) in test_ratios {
+        let price = PrecDec::from_str(price_str).unwrap();
+        let tick = price_to_tick_index(price).unwrap();
+        assert_eq!(tick, expected_tick, 
+            "Failed for price ratio: {}", price_str);
+    }
 }

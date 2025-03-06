@@ -105,10 +105,28 @@ pub enum ContractError {
     InvalidPrice,
 
     #[error("No reply data")]
+    InvalidFeeTier { reason: String },
+
+    #[error("No reply data")]
+    InvalidConfig { reason: String },
+    
+    #[error("Timestamp is stale")]
+    StaleTimestamp,
+
+    #[error("SubMsg failed")]
+    SubMsgFailure { reason: String },
+
+    #[error("No reply data")]
     NoReplyData,
 
     #[error("Failed to parse uint128")]
     ParseError,
+
+    #[error("Contract is paused")]
+    Paused,
+
+    #[error("Incorrect token or token amount provided")]
+    LpTokenError,
 
     #[error("Insufficient funds for withdrawal")]
     InsufficientFundsForWithdrawal,
@@ -127,4 +145,31 @@ pub enum ContractError {
 
     #[error("Unknown reply id: {id}")]
     UnknownReplyId { id: u64 },
+
+    #[error("Overflow error")]
+    Overflow(cosmwasm_std::OverflowError),
+
+    #[error("PrecDec division error")]
+    CheckedDiv(cosmwasm_std::CheckedFromRatioError),
+
+    #[error("Serialization error")]
+    SerializationError,
+
+    #[error("Invalid migration: previous contract {previous_contract}")]
+    InvalidMigration { previous_contract: String },
+
+    #[error("Custom error: {0}")]
+    CustomError(String),
+}
+
+impl From<cosmwasm_std::OverflowError> for ContractError {
+    fn from(err: cosmwasm_std::OverflowError) -> Self {
+        ContractError::Overflow(err)
+    }
+}
+
+impl From<cosmwasm_std::CheckedFromRatioError> for ContractError {
+    fn from(err: cosmwasm_std::CheckedFromRatioError) -> Self {
+        ContractError::CheckedDiv(err)
+    }
 }
