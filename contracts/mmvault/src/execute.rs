@@ -1,38 +1,33 @@
 use crate::error::ContractError;
-use crate::msg::{CombinedPriceResponse, WithdrawPayload};
+use crate::msg::{CombinedPriceResponse, ConfigUpdateMsg, WithdrawPayload};
 use crate::state::{
-    Config, FeeTierConfig, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_WITHDRAW_REPLY_ID, WITHDRAW_REPLY_ID,
+    Config, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_WITHDRAW_REPLY_ID, WITHDRAW_REPLY_ID,
 };
 use crate::utils::*;
 use cosmwasm_std::{
-    Addr, BankMsg, Binary, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg,
+    Addr, Binary, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg,
     SubMsgResult, Uint128,
 };
 use neutron_std::types::neutron::dex::{DexQuerier, MsgWithdrawal, QueryAllUserDepositsResponse};
 use neutron_std::types::neutron::util::precdec::PrecDec;
-use neutron_std::types::osmosis::tokenfactory::v1beta1::{MsgBurn, MsgCreateDenom, MsgMint};
+use neutron_std::types::osmosis::tokenfactory::v1beta1::{MsgCreateDenom, MsgMint};
 use prost::Message;
+
 
 pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
     // Load the contract configuration from storage
-    let mut config = CONFIG.load(deps.storage)?;
+    let mut config = CONFIG.load(deps.storage)?; 
 
-    // Debug log initial state
-    deps.api.debug(&format!(
-        "Initial state - total_shares: {}, token0_balance: {}, token1_balance: {}",
-        config.total_shares, config.balances.token_0.amount, config.balances.token_1.amount
-    ));
-
+   
     // Extract the sent funds from the transaction info
     let sent_funds = info.funds;
-    deps.api.debug(&format!("Received funds: {:?}", sent_funds));
 
     // If no funds are sent, return an error
     if sent_funds.is_empty() {
         return Err(ContractError::NoFundsSent {});
     }
-
+ 
     let mut token0_deposited = Uint128::zero();
     let mut token1_deposited = Uint128::zero();
 
@@ -56,29 +51,31 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         }
     }
 
-    deps.api.debug(&format!(
-        "Processed deposits - token0: {}, token1: {}",
-        token0_deposited, token1_deposited
-    ));
+    // Check if deposit would exceed the deposit cap
+    let prices: CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
+    let deposit_value = get_token_value(prices.clone(), token0_deposited, token1_deposited)?;
+    let exceeds_cap = config.value_deposited.checked_add(deposit_value)? > PrecDec::from_atomics(config.deposit_cap, 0).unwrap();
+    
+    // Only enforce deposit cap for non-whitelisted addresses
+    if exceeds_cap && !config.whitelist.contains(&info.sender) {
+        return Err(ContractError::ExceedsDepositCap {});
+    }
+
+    // update the deposit value
+    config.value_deposited += deposit_value;
 
     let amount_to_mint = get_mint_amount(
         env.clone(),
         &deps,
         config.clone(),
+        prices,
         token0_deposited,
         token1_deposited,
     )?;
 
-    deps.api
-        .debug(&format!(">>>>>>Amount to mint: {}", amount_to_mint));
-
     if amount_to_mint.is_zero() {
         return Err(ContractError::InvalidTokenAmount);
     }
-
-    // Debug log the LP token denom
-    deps.api
-        .debug(&format!("LP token denom: {}", config.lp_denom));
 
     // Mint LP tokens
     let mint_msg = MsgMint {
@@ -163,7 +160,6 @@ pub fn withdraw(
     // Handle withdrawal from existing deposits
     Ok(Response::new()
         .add_submessages(flatten_msgs_always_reply(
-            &deps,
             &[messages],
             WITHDRAW_REPLY_ID,
             Some(Binary::from(payload.encode_to_vec())),
@@ -255,7 +251,6 @@ pub fn dex_withdrawal(
     // Add the message to the response and return
     Ok(Response::new()
         .add_submessages(flatten_msgs_always_reply(
-            &deps,
             &[messages],
             DEX_WITHDRAW_REPLY_ID,
             None,
@@ -265,7 +260,7 @@ pub fn dex_withdrawal(
 
 pub fn handle_dex_withdrawal_reply(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     msg_result: SubMsgResult,
 ) -> Result<Response, ContractError> {
     match msg_result {
@@ -301,7 +296,12 @@ pub fn handle_withdrawal_reply(
                 get_withdrawal_messages(&env, &deps, &config.clone(), burn_amount, beneficiary)?;
             messages.extend(withdrawal_messages);
 
+            // update the deposited value
             let prices: CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
+            let value_withdrawn = get_token_value(prices.clone(), withdraw_amount_0, withdraw_amount_1)?;
+            config.value_deposited -= value_withdrawn;
+            CONFIG.save(deps.storage, &config)?;
+
             let tick_index = price_to_tick_index(prices.price_0_to_1)?;
 
             // Create deposit messages
@@ -389,13 +389,7 @@ pub fn update_config(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    whitelist: Option<Vec<String>>,
-    max_blocks_old_token_a: Option<u64>,
-    max_blocks_old_token_b: Option<u64>,
-    deposit_cap: Option<Uint128>,
-    timestamp_stale: Option<u64>,
-    fee_tier_config: Option<FeeTierConfig>,
-    paused: Option<bool>,
+    update: ConfigUpdateMsg,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -404,31 +398,30 @@ pub fn update_config(
     }
 
     // Update owner if provided
-    if let Some(whitelist) = whitelist {
+    if let Some(whitelist) = update.whitelist {
         let whitelist = whitelist
             .iter()
             .map(|addr| deps.api.addr_validate(addr).map_err(ContractError::Std))
             .collect::<Result<Vec<Addr>, ContractError>>()?;
-        // Validate the address
         config.whitelist = whitelist;
     }
 
     // Update max_blocks_old if provided
-    if let Some(max_blocks_old_token_a) = max_blocks_old_token_a {
+    if let Some(max_blocks_old_token_a) = update.max_blocks_old_token_a {
         config.pair_data.token_0.max_blocks_old = max_blocks_old_token_a;
     }
 
-    if let Some(max_blocks_old_token_b) = max_blocks_old_token_b {
+    if let Some(max_blocks_old_token_b) = update.max_blocks_old_token_b {
         config.pair_data.token_1.max_blocks_old = max_blocks_old_token_b;
     }
 
     // Update deposit_cap if provided
-    if let Some(deposit_cap) = deposit_cap {
+    if let Some(deposit_cap) = update.deposit_cap {
         config.deposit_cap = deposit_cap;
     }
 
     // Update timestamp_stale if provided
-    if let Some(timestamp_stale) = timestamp_stale {
+    if let Some(timestamp_stale) = update.timestamp_stale {
         if timestamp_stale == 0 {
             return Err(ContractError::InvalidConfig {
                 reason: "timestamp_stale must be greater than 0".to_string(),
@@ -438,16 +431,11 @@ pub fn update_config(
     }
 
     // Update fee_tier_config if provided
-    if let Some(fee_tier_config) = fee_tier_config {
+    if let Some(fee_tier_config) = update.fee_tier_config {
         // Validate fee tiers
         let mut total_percentage = 0u64;
         for tier in &fee_tier_config.fee_tiers {
             total_percentage += tier.percentage;
-            if tier.fee < 0 {
-                return Err(ContractError::InvalidFeeTier {
-                    reason: "Fee cannot be negative".to_string(),
-                });
-            }
         }
         if total_percentage > 100 {
             return Err(ContractError::InvalidFeeTier {
@@ -457,8 +445,12 @@ pub fn update_config(
         config.fee_tier_config = fee_tier_config;
     }
 
-    if let Some(paused) = paused {
+    if let Some(paused) = update.paused {
         config.paused = paused;
+    }
+
+    if let Some(skew) = update.skew {
+        config.skew = skew;
     }
 
     // Save updated config

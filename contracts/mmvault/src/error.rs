@@ -125,6 +125,9 @@ pub enum ContractError {
     #[error("Contract is paused")]
     Paused,
 
+    #[error("Deposit would exceed the deposit cap")]
+    ExceedsDepositCap,
+
     #[error("Incorrect token or token amount provided")]
     LpTokenError,
 

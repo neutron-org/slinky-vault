@@ -3,6 +3,7 @@ use cw_storage_plus::Item;
 use neutron_std::types::slinky::types::v1::CurrencyPair;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use neutron_std::types::neutron::util::precdec::PrecDec;
 
 pub const CREATE_TOKEN_REPLY_ID: u64 = 1;
 pub const WITHDRAW_REPLY_ID: u64 = 2;
@@ -63,6 +64,8 @@ pub struct Config {
     pub timestamp_stale: u64,
     pub paused: bool,
     pub oracle_contract: Addr,
+    pub value_deposited: PrecDec,
+    pub skew: bool
 }
 
 // pub const PAIRDATA: Item<PairData> = Item::new("data");

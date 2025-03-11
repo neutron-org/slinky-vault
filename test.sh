@@ -160,20 +160,36 @@ execute_contract() {
     local amount="$3"                   # Make sure we capture the amount parameter
     local from_account="${4:-$account}" # Use provided account or default to $account
     
-    # print_info "Executing contract with account: $from_account"
-    # print_info "Contract address: $contract_addr"
-    # print_info "Message: $msg"
-    # print_info "Amount: ${amount:-'no amount'}"
+    # Add debug output
+    print_info "Debug: execute_contract called with:"
+    print_info "  contract_addr: $contract_addr"
+    print_info "  msg: $msg"
+    print_info "  amount: ${amount:-'<no amount>'}"
+    print_info "  from_account: $from_account"
 
     # Execute the transaction and capture the response
-    local resp=$(neutrond tx wasm execute "$contract_addr" "$msg" ${amount:+--amount "$amount"} \
-        --from "$from_account" \
-        --chain-id "$chain_id" \
-        --gas-prices "$gas_price" \
-        --gas-adjustment "$gas_adjustment" \
-        --gas auto \
-        --yes \
-        --output json)
+    local resp
+    if [ -n "$amount" ]; then
+        print_info "Debug: Executing with amount"
+        resp=$(neutrond tx wasm execute "$contract_addr" "$msg" --amount "$amount" \
+            --from "$from_account" \
+            --chain-id "$chain_id" \
+            --gas-prices "$gas_price" \
+            --gas-adjustment "$gas_adjustment" \
+            --gas auto \
+            --yes \
+            --output json)
+    else
+        print_info "Debug: Executing without amount"
+        resp=$(neutrond tx wasm execute "$contract_addr" "$msg" \
+            --from "$from_account" \
+            --chain-id "$chain_id" \
+            --gas-prices "$gas_price" \
+            --gas-adjustment "$gas_adjustment" \
+            --gas auto \
+            --yes \
+            --output json)
+    fi
 
     # Check if the transaction was successful
     local tx_hash=$(echo "$resp" | jq -r ".txhash")
@@ -557,6 +573,61 @@ verify_lp_tokens() {
     return 0
 }
 
+test_migration() {
+    local new_contract_path=$1
+    local migration_msg="${2:-'{}'}"  # Default to empty message if none provided
+    
+    print_info "Starting contract migration"
+    
+    # Store new contract code
+    local store_resp=$(neutrond tx wasm store $new_contract_path --from $account --chain-id $chain_id \
+        --gas-prices $gas_price --gas-adjustment $gas_adjustment --gas auto --output json -y)
+    
+    if [ $? -ne 0 ]; then
+        print_error "Failed to store new contract"
+        return 1
+    fi
+    
+    local tx_hash=$(echo $store_resp | jq -r ".txhash")
+    wait_for_tx
+    
+    # Get new code ID
+    local new_code_id=$(neutrond q tx $tx_hash --output json --node $node | \
+        jq -r '.events[] | select(.type == "store_code") | .attributes[] | select(.key == "code_id") | .value')
+    
+    if [ -z "$new_code_id" ]; then
+        print_error "Failed to get new code ID"
+        return 1
+    fi
+    print_success "New Code ID: $new_code_id"
+    
+    # Execute migration
+    local migrate_resp=$(neutrond tx wasm migrate $contract_address $new_code_id "$migration_msg" \
+        --from $account \
+        --chain-id $chain_id \
+        --gas-prices $gas_price \
+        --gas-adjustment $gas_adjustment \
+        --gas auto \
+        -y --output json)
+    
+    if [ $? -ne 0 ]; then
+        print_error "Failed to migrate contract"
+        return 1
+    fi
+    
+    tx_hash=$(echo $migrate_resp | jq -r ".txhash")
+    wait_for_tx
+    
+    # Verify contract is still queryable
+    if ! query_contract $contract_address '{"get_config":{}}' > /dev/null 2>&1; then
+        print_error "Contract is not queryable after migration"
+        return 1
+    fi
+    
+    print_success "Migration completed successfully"
+    return 0
+}
+
 ##########################
 #### TEST SCENARIOS #####
 ##########################
@@ -588,57 +659,105 @@ test_basic_deposit_flow() {
 # Example test scenario: Config update flow
 test_config_update_flow() {
     print_section "Config Update Flow Test"
-    local failed=0
+    
+    # Store initial config for comparison
+    local initial_config=$(query_contract $contract_address '{"get_config":{}}')
+    print_info "Initial config: $initial_config"
 
-    # Test token A max blocks update
-    if ! run_subtest "Update Token A Max Blocks" test_config_change "max_blocks_old_token_a" "5"; then
-        failed=1
-    fi
+    # Create a comprehensive update message
+    local update_msg='{
+        "update_config": {
+            "whitelist": ["neutron10h9stc5v6ntgeygf5xf945njqq5h32r54rf7kf"],
+            "max_blocks_old_token_a": 10,
+            "max_blocks_old_token_b": 15,
+            "deposit_cap": "75000",
+            "timestamp_stale": 600,
+            "fee_tier_config": {
+                "fee_tiers": [
+                    {"fee": 20, "percentage": 40},
+                    {"fee": 100, "percentage": 60}
+                ]
+            },
+            "paused": false
+        }
+    }'
 
-    # Test token B max blocks update
-    if ! run_subtest "Update Token B Max Blocks" test_config_change "max_blocks_old_token_b" "5"; then
-        failed=1
-    fi
+    print_info "Sending update message: $update_msg"
 
-    # Test deposit cap update
-    if ! run_subtest "Update Deposit Cap" test_config_change "deposit_cap" "50000"; then
-        failed=1
-    fi
-
-    # Test fee tier update
-    if ! run_subtest "Update Fee Tiers" test_config_change "base_fee" "30"; then
-        failed=1
-    fi
-
-    return $failed
-}
-
-# Example test scenario: Multiple deposits
-test_multiple_deposits() {
-    print_section "Multiple Deposits Test"
-    local failed=0
-
-    # Reset contract state first
-    if ! setup_suite; then
-        print_error "Failed to reset contract state"
+    # Execute the update
+    if ! execute_contract $contract_address "$update_msg"; then
+        print_error "Failed to update config"
         return 1
     fi
 
-    if ! run_subtest "First NTRN Deposit" test_deposit "untrn" "10000000" "10000000"; then
+    # Wait for transaction to be processed
+    wait_for_tx
+
+    # Query updated config
+    local updated_config=$(query_contract $contract_address '{"get_config":{}}')
+    print_info "Updated config: $updated_config"
+
+    # Verify all changes
+    local failed=0
+
+    # Check whitelist
+    local whitelist=$(echo "$updated_config" | jq -r '.data.whitelist[0]')
+    if ! assert_equals "neutron10h9stc5v6ntgeygf5xf945njqq5h32r54rf7kf" "$whitelist" "Whitelist update failed"; then
         failed=1
     fi
-    
-    if [ $failed -eq 0 ]; then
-        if ! run_subtest "Second NTRN Deposit" test_deposit "untrn" "20000000" "30000000"; then
-            failed=1
-        fi
+
+    # Check max_blocks_old values
+    local max_blocks_token_a=$(echo "$updated_config" | jq -r '.data.pair_data.token_0.max_blocks_old')
+    if ! assert_equals "10" "$max_blocks_token_a" "Token A max_blocks_old update failed"; then
+        failed=1
     fi
 
-    # Only verify LP tokens if deposits succeeded
+    local max_blocks_token_b=$(echo "$updated_config" | jq -r '.data.pair_data.token_1.max_blocks_old')
+    if ! assert_equals "15" "$max_blocks_token_b" "Token B max_blocks_old update failed"; then
+        failed=1
+    fi
+
+    # Check deposit cap
+    local deposit_cap=$(echo "$updated_config" | jq -r '.data.deposit_cap')
+    if ! assert_equals "75000" "$deposit_cap" "Deposit cap update failed"; then
+        failed=1
+    fi
+
+    # Check timestamp_stale
+    local timestamp_stale=$(echo "$updated_config" | jq -r '.data.timestamp_stale')
+    if ! assert_equals "600" "$timestamp_stale" "Timestamp stale update failed"; then
+        failed=1
+    fi
+
+    # Check fee tier config
+    local fee_tier_1_fee=$(echo "$updated_config" | jq -r '.data.fee_tier_config.fee_tiers[0].fee')
+    local fee_tier_1_percentage=$(echo "$updated_config" | jq -r '.data.fee_tier_config.fee_tiers[0].percentage')
+    local fee_tier_2_fee=$(echo "$updated_config" | jq -r '.data.fee_tier_config.fee_tiers[1].fee')
+    local fee_tier_2_percentage=$(echo "$updated_config" | jq -r '.data.fee_tier_config.fee_tiers[1].percentage')
+
+    if ! assert_equals "20" "$fee_tier_1_fee" "Fee tier 1 fee update failed"; then
+        failed=1
+    fi
+    if ! assert_equals "40" "$fee_tier_1_percentage" "Fee tier 1 percentage update failed"; then
+        failed=1
+    fi
+    if ! assert_equals "100" "$fee_tier_2_fee" "Fee tier 2 fee update failed"; then
+        failed=1
+    fi
+    if ! assert_equals "60" "$fee_tier_2_percentage" "Fee tier 2 percentage update failed"; then
+        failed=1
+    fi
+
+    # Check paused state
+    local paused=$(echo "$updated_config" | jq -r '.data.paused')
+    if ! assert_equals "false" "$paused" "Paused state update failed"; then
+        failed=1
+    fi
+
     if [ $failed -eq 0 ]; then
-        if ! run_subtest "LP Token Check" verify_lp_tokens "$account" "1"; then
-            failed=1
-        fi
+        print_success "All config updates verified successfully"
+    else
+        print_error "Some config updates failed verification"
     fi
 
     return $failed
@@ -659,6 +778,282 @@ test_dex_deposit() {
     wait_for_tx
 
     # Print vault info to see the results
+    print_vault_info
+
+    return $failed
+}
+
+test_dex_withdrawal() {
+    print_section "DEX Withdrawal Test"
+    local failed=0
+
+    # Get initial contract balances and pool reserves
+    print_info "Getting initial state..."
+    local initial_balances=$(neutrond q bank balances $contract_address --node $node --output json)
+    local initial_token_a=$(echo "$initial_balances" | jq -r '.balances[] | select(.denom == "'$token_a'") | .amount // "0"')
+    local initial_token_b=$(echo "$initial_balances" | jq -r '.balances[] | select(.denom == "'$token_b'") | .amount // "0"')
+    
+    print_info "Initial contract balances:"
+    print_info "Token A ($token_a): $initial_token_a"
+    print_info "Token B ($token_b): $initial_token_b"
+    # Execute withdrawal from DEX
+    local withdrawal_msg='{"dex_withdrawal":{}}'
+    if ! execute_contract $contract_address "$withdrawal_msg"; then
+        print_error "Failed to execute withdrawal from DEX"
+        return 1
+    fi
+
+    # Wait for transaction to be processed
+    wait_for_tx
+
+    # Get final contract balances
+    print_info "Getting final state..."
+    local final_balances=$(neutrond q bank balances $contract_address --node $node --output json)
+    local final_token_a=$(echo "$final_balances" | jq -r '.balances[] | select(.denom == "'$token_a'") | .amount // "0"')
+    local final_token_b=$(echo "$final_balances" | jq -r '.balances[] | select(.denom == "'$token_b'") | .amount // "0"')
+    
+    print_info "Final contract balances:"
+    print_info "Token A ($token_a): $final_token_a"
+    print_info "Token B ($token_b): $final_token_b"
+
+    # Verify that balances have increased (indicating successful withdrawal)
+    if [ "$final_token_a" -le "$initial_token_a" ] && [ "$final_token_b" -le "$initial_token_b" ]; then
+        print_error "No balance increase detected after withdrawal"
+        print_error "Token A: $initial_token_a -> $final_token_a"
+        print_error "Token B: $initial_token_b -> $final_token_b"
+        failed=1
+    else
+        print_success "Balance increase detected after withdrawal"
+        print_success "Token A: $initial_token_a -> $final_token_a"
+        print_success "Token B: $initial_token_b -> $final_token_b"
+    fi
+
+    # Print final vault info
+    print_vault_info
+
+    return $failed
+}
+
+test_contract_migration() {
+    print_section "Contract Migration Test"
+    local failed=0
+    
+    # Get initial contract balances before any test deposits
+    local initial_contract_balances=$(neutrond q bank balances $contract_address --node $node --output json)
+    local initial_untrn=$(echo "$initial_contract_balances" | jq -r '.balances[] | select(.denom == "untrn") | .amount // "0"')
+    print_info "Initial contract untrn balance: $initial_untrn"
+    
+    # basic deposit to ensure the contract is working
+    local deposit_amount="10000000"
+    local expected_balance=$(echo "$initial_untrn + $deposit_amount" | bc)
+    if ! run_subtest "Initial Deposit" test_deposit "untrn" "$deposit_amount" "$expected_balance"; then
+        failed=1
+        return $failed
+    fi
+
+    # Get current config and balances before migration
+    local pre_migration_config=$(query_contract $contract_address '{"get_config":{}}')
+    local pre_migration_balances=$(neutrond q bank balances $contract_address --node $node --output json)
+    local pre_migration_untrn=$(echo "$pre_migration_balances" | jq -r '.balances[] | select(.denom == "untrn") | .amount // "0"')
+    print_info "Pre-migration untrn balance: $pre_migration_untrn"
+
+    # Extract current values from config
+    local current_lp_denom=$(echo "$pre_migration_config" | jq -r '.data.lp_denom')
+    local current_token_0_amount=$(echo "$pre_migration_config" | jq -r '.data.balances.token_0.amount')
+    local current_token_1_amount=$(echo "$pre_migration_config" | jq -r '.data.balances.token_1.amount')
+    local current_value_deposited=$(echo "$pre_migration_config" | jq -r '.data.value_deposited')
+    local current_total_shares=$(echo "$pre_migration_config" | jq -r '.data.total_shares')
+
+    print_info "Current state before migration:"
+    print_info "LP Denom: $current_lp_denom"
+    print_info "Token 0 Amount: $current_token_0_amount"
+    print_info "Token 1 Amount: $current_token_1_amount"
+    print_info "Total Shares: $current_total_shares"
+    print_info "Value Deposited: $current_value_deposited"
+
+    # Migration message that preserves current state
+    local migration_msg='{
+        "config": {
+            "pair_data": {
+                "token_0": {
+                    "denom": "'$token_a'",
+                    "decimals": 6,
+                    "pair": {"base": "USDC", "quote": "USD"},
+                    "max_blocks_old": 2
+                },
+                "token_1": {
+                    "denom": "'$token_b'",
+                    "decimals": 6,
+                    "pair": {"base": "NTRN", "quote": "USD"},
+                    "max_blocks_old": 2
+                },
+                "pair_id": "'$pair_id'"
+            },
+            "balances": {
+                "token_0": {"denom": "'$token_a'", "amount": "'$current_token_0_amount'"},
+                "token_1": {"denom": "'$token_b'", "amount": "'$current_token_1_amount'"}
+            },
+            "fee_tier_config": {
+                "fee_tiers": [
+                    {"fee": 10, "percentage": 30},
+                    {"fee": 150, "percentage": 70}
+                ]
+            },
+            "lp_denom": "'$current_lp_denom'",
+            "total_shares": "'$current_total_shares'",
+            "whitelist": ["neutron10h9stc5v6ntgeygf5xf945njqq5h32r54rf7kf","neutron1m9l358xunhhwds0568za49mzhvuxx9ux8xafx2"],
+            "deposit_cap": "10000",
+            "timestamp_stale": 300,
+            "paused": false,
+            "oracle_contract": "'$oracle_address'",
+            "value_deposited": "'$current_value_deposited'",
+            "migration_successful": true
+        }
+    }'
+    
+    print_info "Migration message: $migration_msg"
+    
+    # Perform migration
+    if ! run_subtest "Contract Migration" test_migration "./upgrade-test-artifacts/mmvault.wasm" "$migration_msg"; then
+        print_error "Migration failed"
+        failed=1
+        return $failed
+    fi
+    
+    # Wait a bit longer after migration
+    sleep 5
+    
+    # Verify state after migration
+    local post_config=$(query_contract $contract_address '{"get_config":{}}')
+    print_info "Post-migration config: $post_config"
+    
+    # Verify migration_successful field is true
+    local migration_successful=$(echo "$post_config" | jq -r '.data.migration_successful')
+    if [ "$migration_successful" != "true" ]; then
+        print_error "migration_successful field not set correctly after migration. Got: $migration_successful"
+        failed=1
+        return $failed
+    fi
+    print_success "migration_successful field verified"
+
+    # Verify deposits were preserved
+    if ! run_subtest "Verify Deposits Preserved" verify_lp_tokens "$account" "1"; then
+        failed=1
+        return $failed
+    fi
+
+    # Get post-migration balances
+    local post_migration_balances=$(neutrond q bank balances $contract_address --node $node --output json)
+    local post_migration_untrn=$(echo "$post_migration_balances" | jq -r '.balances[] | select(.denom == "untrn") | .amount // "0"')
+    print_info "Post-migration untrn balance: $post_migration_untrn"
+
+    # Test that contract is still functional by making a new deposit
+    local post_migration_deposit_amount="5000000"
+    local expected_final_balance=$(echo "$post_migration_untrn + $post_migration_deposit_amount" | bc)
+    
+    if ! run_subtest "Post-Migration Deposit" test_deposit "untrn" "$post_migration_deposit_amount" "$expected_final_balance"; then
+        failed=1
+    fi
+    
+    return $failed
+}
+
+test_basic_withdrawal_flow() {
+    print_section "Basic Withdrawal Flow Test"
+    local failed=0
+
+    # Get initial contract and user balances
+    local initial_contract_balances=$(neutrond q bank balances $contract_address --node $node --output json)
+    local initial_user_balances=$(neutrond q bank balances $account --node $node --output json)
+    
+    local initial_contract_token_a=$(echo "$initial_contract_balances" | jq -r '.balances[] | select(.denom == "'$token_a'") | .amount // "0"')
+    local initial_contract_token_b=$(echo "$initial_contract_balances" | jq -r '.balances[] | select(.denom == "'$token_b'") | .amount // "0"')
+    local initial_user_token_a=$(echo "$initial_user_balances" | jq -r '.balances[] | select(.denom == "'$token_a'") | .amount // "0"')
+    local initial_user_token_b=$(echo "$initial_user_balances" | jq -r '.balances[] | select(.denom == "'$token_b'") | .amount // "0"')
+    
+    print_info "Initial contract balances:"
+    print_info "Token A ($token_a): $initial_contract_token_a"
+    print_info "Token B ($token_b): $initial_contract_token_b"
+    print_info "Initial user balances:"
+    print_info "Token A ($token_a): $initial_user_token_a"
+    print_info "Token B ($token_b): $initial_user_token_b"
+
+    # Get initial LP token balance
+    local config_response=$(query_contract $contract_address '{"get_config":{}}')
+    local lp_denom=$(echo "$config_response" | jq -r '.data.lp_denom')
+    local initial_lp_balance=$(get_lp_balance "$account" "$lp_denom")
+    print_info "Initial LP balance: $initial_lp_balance"
+
+    if [ "$initial_lp_balance" = "0" ]; then
+        print_error "No LP tokens to withdraw"
+        return 1
+    fi
+
+    # Execute withdrawal with the LP tokens sent along
+    local withdraw_msg=$(printf '{"withdraw":{"amount":"%s"}}' "$initial_lp_balance")
+    if ! execute_contract $contract_address "$withdraw_msg" "${initial_lp_balance}${lp_denom}"; then
+        print_error "Failed to execute withdrawal"
+        return 1
+    fi
+
+    # Wait for transaction to be processed
+    wait_for_tx
+
+    # Get final LP token balance
+    local final_lp_balance=$(get_lp_balance "$account" "$lp_denom")
+    print_info "Final LP balance: $final_lp_balance"
+
+    # Verify LP tokens were burned
+    if [ "$final_lp_balance" -ge "$initial_lp_balance" ]; then
+        print_error "LP tokens were not burned"
+        print_error "Initial: $initial_lp_balance, Final: $final_lp_balance"
+        failed=1
+    else
+        print_success "LP tokens were burned successfully"
+        print_success "Initial: $initial_lp_balance, Final: $final_lp_balance"
+    fi
+
+    # Get final contract and user balances
+    local final_contract_balances=$(neutrond q bank balances $contract_address --node $node --output json)
+    local final_user_balances=$(neutrond q bank balances $account --node $node --output json)
+    
+    local final_contract_token_a=$(echo "$final_contract_balances" | jq -r '.balances[] | select(.denom == "'$token_a'") | .amount // "0"')
+    local final_contract_token_b=$(echo "$final_contract_balances" | jq -r '.balances[] | select(.denom == "'$token_b'") | .amount // "0"')
+    local final_user_token_a=$(echo "$final_user_balances" | jq -r '.balances[] | select(.denom == "'$token_a'") | .amount // "0"')
+    local final_user_token_b=$(echo "$final_user_balances" | jq -r '.balances[] | select(.denom == "'$token_b'") | .amount // "0"')
+    
+    print_info "Final contract balances:"
+    print_info "Token A ($token_a): $final_contract_token_a"
+    print_info "Token B ($token_b): $final_contract_token_b"
+    print_info "Final user balances:"
+    print_info "Token A ($token_a): $final_user_token_a"
+    print_info "Token B ($token_b): $final_user_token_b"
+
+    # Verify contract balances decreased
+    if [ "$final_contract_token_a" -ge "$initial_contract_token_a" ] || [ "$final_contract_token_b" -ge "$initial_contract_token_b" ]; then
+        print_error "Contract balances did not decrease as expected"
+        print_error "Token A: $initial_contract_token_a -> $final_contract_token_a"
+        print_error "Token B: $initial_contract_token_b -> $final_contract_token_b"
+        failed=1
+    else
+        print_success "Contract balances decreased as expected"
+        print_success "Token A: $initial_contract_token_a -> $final_contract_token_a"
+        print_success "Token B: $initial_contract_token_b -> $final_contract_token_b"
+    fi
+
+    # Verify user balances increased
+    if [ "$final_user_token_a" -le "$initial_user_token_a" ] || [ "$final_user_token_b" -le "$initial_user_token_b" ]; then
+        print_error "User balances did not increase as expected"
+        print_error "Token A: $initial_user_token_a -> $final_user_token_a"
+        print_error "Token B: $initial_user_token_b -> $final_user_token_b"
+        failed=1
+    else
+        print_success "User balances increased as expected"
+        print_success "Token A: $initial_user_token_a -> $final_user_token_a"
+        print_success "Token B: $initial_user_token_b -> $final_user_token_b"
+    fi
+
+    # Print final vault info
     print_vault_info
 
     return $failed
@@ -688,21 +1083,6 @@ run_test() {
 }
 
 query_slinky_prices() {
-    # local query_msg='{
-    #     "get_prices": {
-    #         "token_a": {
-    #             "base": "NTRN",
-    #             "decimals": 6
-    #         },
-    #         "token_b": {
-    #             "base": "USDC",
-    #             "decimals": 6
-    #         },
-  
-    #         "max_blocks_old": 2
-    #     }
-    # }'
-    # query_contract $oracle_address "$query_msg"
     query_contract $contract_address '{"get_prices":{}}'
 }
 
@@ -714,12 +1094,14 @@ main() {
 
 
     # # Run test scenarios
-    # run_test "Query slinky prices" query_slinky_prices
+    run_test "Query slinky prices" query_slinky_prices
     run_test "Basic Deposit Flow" test_basic_deposit_flow
-    # run_test "Config Update Flow" test_config_update_flow
-    # run_test "Multiple Deposits" test_multiple_deposits
     run_test "Dex Deposit" test_dex_deposit
-    # Add more test scenarios here as needed
+    run_test "Contract Migration" test_contract_migration
+    run_test "Dex Withdrawal" test_dex_withdrawal
+    run_test "Basic Withdrawal Flow" test_basic_withdrawal_flow
+    run_test "Config Update Flow" test_config_update_flow
+
 
     # Teardown
     teardown_suite

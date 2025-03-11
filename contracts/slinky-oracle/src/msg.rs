@@ -1,9 +1,7 @@
 use crate::{
-    error::{ContractError, ContractResult},
     state::TokenData,
 };
-use cosmwasm_std::{Addr, Coin, Response, Uint128};
-use prost::Message;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

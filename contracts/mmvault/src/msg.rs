@@ -1,8 +1,8 @@
 use crate::{
     error::{ContractError, ContractResult},
-    state::{FeeTier, FeeTierConfig, TokenData},
+    state::{FeeTierConfig, TokenData, Config},
 };
-use cosmwasm_std::{Addr, Coin, Response, Uint128};
+use cosmwasm_std::{Coin, Response, Uint128};
 use neutron_std::types::neutron::util::precdec::PrecDec;
 use prost::Message;
 use schemars::JsonSchema;
@@ -21,7 +21,9 @@ pub struct ReceiveFunds {}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct MigrateMsg {}
+pub struct MigrateMsg {
+    pub config: Config,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -34,6 +36,19 @@ pub struct InstantiateMsg {
     pub timestamp_stale: u64,
     pub paused: bool,
     pub oracle_contract: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct ConfigUpdateMsg {
+    pub whitelist: Option<Vec<String>>,
+    pub max_blocks_old_token_a: Option<u64>,
+    pub max_blocks_old_token_b: Option<u64>,
+    pub deposit_cap: Option<Uint128>,
+    pub timestamp_stale: Option<u64>,
+    pub fee_tier_config: Option<FeeTierConfig>,
+    pub paused: Option<bool>,
+    pub skew: Option<bool>,
 }
 
 impl InstantiateMsg {
@@ -54,19 +69,6 @@ impl InstantiateMsg {
             self.token_b.pair.base.clone(),
             "token_b symbol (base)".to_string(),
         )?;
-
-        if self.token_a.max_blocks_old <= 0 {
-            return Err(ContractError::MalformedInput {
-                input: "max_block_stale".to_string(),
-                reason: "must be >=1".to_string(),
-            });
-        }
-        if self.token_b.max_blocks_old <= 0 {
-            return Err(ContractError::MalformedInput {
-                input: "max_block_stale".to_string(),
-                reason: "must be >=1".to_string(),
-            });
-        }
         Self::validate_denom(&self.token_a.denom)?;
         Self::validate_denom(&self.token_b.denom)?;
         Self::validate_fee_tier_config(&self.fee_tier_config)?;
@@ -85,11 +87,6 @@ impl InstantiateMsg {
 
         // Check each fee tier
         for tier in &config.fee_tiers {
-            if tier.percentage < 0 {
-                return Err(ContractError::InvalidFeeTier {
-                    reason: "Fee tier cannot be negative".to_string(),
-                });
-            }
             total_percentage += tier.percentage;
         }
 
@@ -160,13 +157,7 @@ pub enum ExecuteMsg {
     // // helper to atomically purge and pause
     // PurgeAndPause {},
     UpdateConfig {
-        whitelist: Option<Vec<String>>,
-        max_blocks_old_token_a: Option<u64>,
-        max_blocks_old_token_b: Option<u64>,
-        deposit_cap: Option<Uint128>,
-        timestamp_stale: Option<u64>,
-        fee_tier_config: Option<FeeTierConfig>,
-        paused: Option<bool>,
+        update: ConfigUpdateMsg,
     },
 }
 

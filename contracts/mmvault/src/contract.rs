@@ -5,8 +5,9 @@ use crate::query::*;
 use crate::state::{Balances, Config, FeeTierConfig, FeeTier, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_WITHDRAW_REPLY_ID, WITHDRAW_REPLY_ID};
 use crate::utils::*;
 use cosmwasm_std::{
-    attr, entry_point, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128, Addr, BankMsg, CosmosMsg, SubMsg
+    attr, entry_point, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128, Addr
 };
+use neutron_std::types::neutron::util::precdec::PrecDec;
 use cw2::set_contract_version;
 use prost::Message;
 use std::str::FromStr;
@@ -24,20 +25,18 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn migrate(
     deps: DepsMut,
     _env: Env,
-    _msg: MigrateMsg,
+    msg: MigrateMsg,
 ) -> Result<Response, ContractError> {
-    // Set the new contract version
+    // Update contract version
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let config = CONFIG.load(deps.storage)?;
-
-    CONFIG.save(deps.storage, &config)?;
+    // Save new config directly
+    CONFIG.save(deps.storage, &msg.config)?;
 
     Ok(Response::new()
         .add_attribute("action", "migrate")
-        .add_attribute("from_version", CONTRACT_VERSION)
-        .add_attribute("to_version", CONTRACT_VERSION)
-        .add_attribute("contract", CONTRACT_NAME))
+        .add_attribute("contract", CONTRACT_NAME)
+        .add_attribute("version", CONTRACT_VERSION))
 }
 
 
@@ -94,6 +93,8 @@ pub fn instantiate(
         timestamp_stale: msg.timestamp_stale,
         paused: msg.paused,
         oracle_contract: oracle_contract.clone(),
+        value_deposited: PrecDec::zero(),
+        skew: false,
     };
 
     // PAIRDATA.save(deps.storage, &pool_data)?;
@@ -163,7 +164,7 @@ pub fn execute(
             }
             execute_create_token(deps, _env, info)
         }
-        ExecuteMsg::UpdateConfig { whitelist, max_blocks_old_token_a, max_blocks_old_token_b, deposit_cap, timestamp_stale, fee_tier_config, paused} => {
+        ExecuteMsg::UpdateConfig { update } => {
             // Prevent tokens from being sent with the Withdraw message
             if !info.funds.is_empty() {
                 return Err(ContractError::FundsNotAllowed);
@@ -172,13 +173,7 @@ pub fn execute(
                 deps,
                 _env,
                 info,
-                whitelist,
-                max_blocks_old_token_a,
-                max_blocks_old_token_b,
-                deposit_cap,
-                timestamp_stale,
-                fee_tier_config,
-                paused,
+                update,
             )
         }
     }
@@ -207,7 +202,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
-    deps.api.debug(&format!(">>>>>Processing reply with ID: {}", msg.id));
     match msg.id {
         CREATE_TOKEN_REPLY_ID => handle_create_token_reply(deps, msg.result),
         WITHDRAW_REPLY_ID => {

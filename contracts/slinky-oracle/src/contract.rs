@@ -1,10 +1,9 @@
 use crate::error::{ContractError, ContractResult};
 use crate::msg::{QueryMsg, MigrateMsg, InstantiateMsg};
 use cosmwasm_std::{
-    attr, entry_point, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128, Addr, BankMsg, CosmosMsg, SubMsg, StdResult
+    attr, entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response
 };
 use cw2::{set_contract_version, get_contract_version};
-use prost::Message;
 use crate::utils::*;
 use serde_json::to_vec;
 

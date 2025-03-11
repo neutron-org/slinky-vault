@@ -1,28 +1,14 @@
 use std::str::FromStr;
 
 use crate::error::{ContractError, ContractResult};
-use crate::state::{TokenData, CombinedPriceResponse};
-use cosmwasm_std::{
-    BalanceResponse, BankQuery, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, Int128, QueryRequest,
-    ReplyOn, Response, SubMsg, SubMsgResponse, Uint128, BankMsg
-};
+use crate::state::{CombinedPriceResponse, TokenData};
+use cosmwasm_std::{Deps, Env, Int128, Response};
 use neutron_std::types::neutron::util::precdec::PrecDec;
-use neutron_std::types::osmosis::tokenfactory::v1beta1::MsgCreateDenomResponse;
-use neutron_std::types::{
-    neutron::dex::{
-        DepositOptions, DexQuerier, MsgDeposit, MsgWithdrawal, MsgWithdrawalResponse,
-        QueryAllUserDepositsResponse,
-    },
-    slinky::{
-        marketmap::v1::{MarketMap, MarketResponse, MarketmapQuerier},
-        oracle::v1::{GetAllCurrencyPairsResponse, GetPriceResponse, OracleQuerier},
-        types::v1::CurrencyPair,
-    },
+use neutron_std::types::slinky::{
+    marketmap::v1::{MarketMap, MarketResponse, MarketmapQuerier},
+    oracle::v1::{GetAllCurrencyPairsResponse, GetPriceResponse, OracleQuerier},
+    types::v1::CurrencyPair,
 };
-use neutron_std::types::osmosis::tokenfactory::v1beta1::{MsgBurn, MsgCreateDenom, MsgMint};
-
-use prost::Message;
-use serde_json::to_vec;
 
 pub fn query_oracle_price(deps: &Deps, pair: &CurrencyPair) -> ContractResult<GetPriceResponse> {
     let querier = OracleQuerier::new(&deps.querier);
@@ -191,11 +177,16 @@ pub fn validate_price_not_nil(
     Ok(Response::new())
 }
 
-pub fn get_prices(deps: Deps, env: Env, token_a: TokenData, token_b: TokenData) -> ContractResult<CombinedPriceResponse> {
+pub fn get_prices(
+    deps: Deps,
+    env: Env,
+    token_a: TokenData,
+    token_b: TokenData,
+) -> ContractResult<CombinedPriceResponse> {
     // Helper function to get price or return 1 if the base is a USD denom
     let pair_1 = CurrencyPair {
         base: token_a.pair.base.to_string(),
-        quote:  token_a.pair.quote.to_string(),
+        quote: token_a.pair.quote.to_string(),
     };
     let pair_2 = CurrencyPair {
         base: token_b.pair.base.to_string(),
@@ -214,7 +205,7 @@ pub fn get_prices(deps: Deps, env: Env, token_a: TokenData, token_b: TokenData) 
         }
 
         // Query the oracle for the price
-        let price_response = query_oracle_price(deps, &pair)?;
+        let price_response = query_oracle_price(deps, pair)?;
         validate_price_not_nil(deps, pair, Some(price_response.clone()))?;
         validate_price_recent(
             deps,

@@ -1,7 +1,5 @@
 use crate::error::ContractResult;
-use crate::msg::CombinedPriceResponse;
 use crate::state::CONFIG;
-use crate::utils::*;
 use cosmwasm_std::{to_json_binary, Binary, Deps, Env};
 use neutron_std::types::neutron::dex::DexQuerier;
 
