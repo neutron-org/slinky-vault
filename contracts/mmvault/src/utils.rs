@@ -460,6 +460,7 @@ pub fn get_deposit_messages(
             options: vec![DepositOptions {
                 disable_autoswap: false,
                 fail_tx_on_bel: false,
+                swap_on_deposit: true,
             }],
         });
         messages.push(dex_msg);
@@ -490,6 +491,7 @@ pub fn get_deposit_messages(
                 options: vec![DepositOptions {
                     disable_autoswap: false,
                     fail_tx_on_bel: false,
+                    swap_on_deposit: true,
                 }],
             });
             messages.push(dex_msg);

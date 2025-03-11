@@ -23,7 +23,7 @@ overflow-checks = true
 prost = "0.12.4"
 prost-types = "0.12.4"
 cosmos-sdk-proto = { version = "0.20.0", default-features = false }
-neutron-std = { git = "https://github.com/neutron-org/neutron-std", branch = "feat/respect-gogoproto-nullable" }
+neutron-std = { git = "https://github.com/neutron-org/neutron-std", branch = "temp/pd_and_sod" }
 cosmwasm-std = { version = "2.2.0", features = [
     "stargate",
     "staking",
