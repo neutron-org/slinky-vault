@@ -41,13 +41,6 @@ pub struct FeeTierConfig {
     pub fee_tiers: Vec<FeeTier>,
 }
 
-/// This structure stores the concentrated pair parameters.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub struct Balances {
-    pub token_0: Coin,
-    pub token_1: Coin,
-}
 
 /// This structure stores the concentrated pair parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
@@ -55,7 +48,6 @@ pub struct Balances {
 pub struct Config {
     /// number of blocks until price is stale
     pub pair_data: PairData,
-    pub balances: Balances,
     pub lp_denom: String,
     pub total_shares: Uint128,
     pub whitelist: Vec<Addr>,

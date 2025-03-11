@@ -180,7 +180,7 @@ fn test_price_to_tick_index_special_values() {
 mod tests {
     use super::*;
     use crate::msg::CombinedPriceResponse;
-    use crate::state::{Config, FeeTier, FeeTierConfig, PairData, TokenData, Balances};
+    use crate::state::{Config, FeeTier, FeeTierConfig, PairData, TokenData};
     use cosmwasm_std::testing::mock_env;
     use cosmwasm_std::{Addr, Coin, CosmosMsg, Uint128};
     use neutron_std::types::neutron::dex::MsgDeposit;
@@ -213,16 +213,6 @@ mod tests {
                     },
                 },
                 pair_id: "token0<>token1".to_string(),
-            },
-            balances: Balances {
-                token_0: Coin {
-                    denom: "token0".to_string(),
-                    amount: Uint128::zero(),
-                },
-                token_1: Coin {
-                    denom: "token1".to_string(),
-                    amount: Uint128::zero(),
-                },
             },
             total_shares: Uint128::zero(),
             whitelist: vec![Addr::unchecked("owner")],

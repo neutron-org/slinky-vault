@@ -95,21 +95,6 @@ pub fn query_contract_balance(
     Ok(balances)
 }
 
-/// Updates the balances in the provided config object.
-pub fn update_contract_balance(
-    deps: &DepsMut,
-    env: Env,
-    config: &mut Config,
-) -> Result<(), ContractError> {
-    // Query the contract balances for the two tokens
-    let balances = query_contract_balance(deps, env, config.pair_data.clone())?;
-
-    // Update the config balances based on the queried balances
-    config.balances.token_0.amount = balances[0].amount;
-    config.balances.token_1.amount = balances[1].amount;
-
-    Ok(())
-}
 
 pub fn price_to_tick_index(price: PrecDec) -> Result<i64, ContractError> {
     // Ensure the price is greater than 0
@@ -313,7 +298,7 @@ pub fn extract_denom(result: &SubMsgResponse) -> Result<String, ContractError> {
 
     Ok(denom)
 }
-pub fn get_deposited_token_amounts(
+pub fn get_virtual_contract_balance(
     env: Env,
     deps: &DepsMut,
     config: Config,
@@ -371,34 +356,29 @@ pub fn get_mint_amount(
     prices: CombinedPriceResponse,
     deposited_value_token_0: PrecDec,
     deposited_value_token_1: PrecDec,
-    deposit_amount_0: Uint128,
-    deposit_amount_1: Uint128,
 ) -> Result<Uint128, ContractError> {
     let mut total_shares = PrecDec::zero();
     let balances = query_contract_balance(deps, env.clone(), config.pair_data.clone())?;
 
-    let total_amount_0 = balances[0].amount;
-    let total_amount_1 = balances[1].amount;
+    //get total contract balance:
+    let (total_amount_0, total_amount_1) = get_virtual_contract_balance(env, deps, config.clone())?;
 
     // Get the total value of the remaining tokens
-    let total_value_token_0 = PrecDec::from_ratio(
-        total_amount_0,
-        10u128.pow(config.pair_data.token_0.decimals.into()),
-    ) * prices.token_0_price;
-    let total_value_token_1 = PrecDec::from_ratio(
-        total_amount_1,
-        10u128.pow(config.pair_data.token_1.decimals.into()),
-    ) * prices.token_1_price;
+    let total_value_token_0 = PrecDec::from_atomics(total_amount_0, 0)
+        .map_err(|_| ContractError::DecimalConversionError)?
+        .checked_mul(prices.token_0_price)?;
+    let total_value_token_1 = PrecDec::from_atomics(total_amount_1, 0)
+        .map_err(|_| ContractError::DecimalConversionError)?
+        .checked_mul(prices.token_1_price)?;
 
-
-    let total_value_combined = total_value_token_0 + total_value_token_1;
+    let total_value_combined = total_value_token_0.checked_add(total_value_token_1)?;
     let deposit_value_incoming = deposited_value_token_0
         .checked_add(deposited_value_token_1)
         .unwrap();
 
     if config.total_shares == Uint128::zero() {
         // Initial deposit - set shares equal to deposit value
-        total_shares = deposit_value_incoming;
+        total_shares = deposit_value_incoming.checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))?;
     } else {
         // Calculate proportional shares based on the ratio of deposit value to total value
         total_shares = deposit_value_incoming
@@ -408,17 +388,11 @@ pub fn get_mint_amount(
             .map_err(|_| ContractError::ConversionError)?;
     }
 
-    let shares_returned = precdec_to_uint128(
-        total_shares
-            .checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))
-            .map_err(|_| ContractError::ConversionError)?,
-    )?;
-
-    if shares_returned.is_zero() {
+    if total_shares.is_zero() {
         return Err(ContractError::InvalidTokenAmount);
     }
 
-    Ok(shares_returned)
+    Ok(precdec_to_uint128(total_shares)?)
 }
 
 pub fn precdec_to_uint128(precdec: PrecDec) -> Result<Uint128, ContractError> {
@@ -547,12 +521,12 @@ pub fn get_withdrawal_messages(
 ) -> Result<(Vec<CosmosMsg>, Uint128, Uint128), ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
 
-    let balances = query_contract_balance(deps, env.clone(), config.pair_data.clone())?;
+    let balances = get_virtual_contract_balance(env.clone(), deps, config.clone())?;
     let total_supply: Uint128 = deps.querier.query_supply(&config.lp_denom)?.amount;
     // Calculate withdrawal amounts using multiplication before division to prevent precision loss
     // and potential overflow
-    let withdraw_amount_0 = balances[0].amount.multiply_ratio(burn_amount, total_supply);
-    let withdraw_amount_1 = balances[1].amount.multiply_ratio(burn_amount, total_supply);
+    let withdraw_amount_0 = balances.0.multiply_ratio(burn_amount, total_supply);
+    let withdraw_amount_1 = balances.1.multiply_ratio(burn_amount, total_supply);
 
     // burn the LP tokens
     let burn_msg = MsgBurn {
@@ -569,12 +543,12 @@ pub fn get_withdrawal_messages(
 
     messages.push(burn_msg.into());
 
-    if !(config.balances.token_0.amount.is_zero() && withdraw_amount_0.is_zero()) {
+    if !(balances.0.is_zero() && withdraw_amount_0.is_zero()) {
         messages.push(
             BankMsg::Send {
                 to_address: beneficiary.clone(),
                 amount: vec![Coin {
-                    denom: config.balances.token_0.denom.clone(),
+                    denom: config.pair_data.token_0.denom.clone(),
                     amount: withdraw_amount_0,
                 }],
             }
@@ -582,12 +556,12 @@ pub fn get_withdrawal_messages(
         );
     }
 
-    if !(config.balances.token_1.amount.is_zero() && withdraw_amount_1.is_zero()) {
+    if !(balances.1.is_zero() && withdraw_amount_1.is_zero()) {
         messages.push(
             BankMsg::Send {
                 to_address: beneficiary.clone(),
                 amount: vec![Coin {
-                    denom: config.balances.token_1.denom.clone(),
+                    denom: config.pair_data.token_1.denom.clone(),
                     amount: withdraw_amount_1,
                 }],
             }

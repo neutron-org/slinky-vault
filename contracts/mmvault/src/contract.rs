@@ -2,10 +2,10 @@ use crate::error::{ContractError, ContractResult};
 use crate::execute::*;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload};
 use crate::query::*;
-use crate::state::{Balances, Config, FeeTierConfig, FeeTier, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_WITHDRAW_REPLY_ID, WITHDRAW_REPLY_ID};
+use crate::state::{Config, FeeTierConfig, FeeTier, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_WITHDRAW_REPLY_ID, WITHDRAW_REPLY_ID};
 use crate::utils::*;
 use cosmwasm_std::{
-    attr, entry_point, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128, Addr
+    attr, entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128, Addr
 };
 use neutron_std::types::neutron::util::precdec::PrecDec;
 use cw2::set_contract_version;
@@ -38,7 +38,6 @@ pub fn migrate(
         .add_attribute("contract", CONTRACT_NAME)
         .add_attribute("version", CONTRACT_VERSION))
 }
-
 
 ///////////////////
 /// INSTANTIATE ///
@@ -75,16 +74,10 @@ pub fn instantiate(
         pair_id: id.clone(),
     };
 
-    let balances = Balances {
-        token_0: Coin::new(Uint128::zero(), tokens[0].denom.clone()),
-        token_1: Coin::new(Uint128::zero(), tokens[1].denom.clone()),
-    };
-
     let fee_tier: FeeTier = FeeTier { fee: 0, percentage: 0 };
     let fee_tier_config = FeeTierConfig { fee_tiers: vec![fee_tier] };
     let config = Config {
         pair_data: pairs.clone(),
-        balances,
         fee_tier_config,
         lp_denom: "".to_string(),
         total_shares: Uint128::zero(),

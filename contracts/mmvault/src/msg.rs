@@ -145,11 +145,12 @@ pub enum ExecuteMsg {
     Deposit {},
     // withdraw free unutilised funds
     Withdraw { amount: Uint128 },
-    // // cancels and withdraws all active and filled Limit orders
+    // cancels and withdraws all active and filled Limit orders
     DexDeposit {},
     DexWithdrawal {},
     // create the LP token
     CreateToken {},
+
     UpdateConfig {
         update: ConfigUpdateMsg,
     },

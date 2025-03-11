@@ -33,18 +33,16 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
 
     // Iterate through the sent funds
     for coin in sent_funds.iter() {
-        if coin.denom == config.balances.token_0.denom {
+        if coin.denom == config.pair_data.token_0.denom {
             if coin.amount == Uint128::zero() {
                 return Err(ContractError::InvalidTokenAmount);
             }
             token0_deposited += coin.amount;
-            config.balances.token_0.amount += coin.amount;
-        } else if coin.denom == config.balances.token_1.denom {
+        } else if coin.denom == config.pair_data.token_1.denom {
             if coin.amount == Uint128::zero() {
                 return Err(ContractError::InvalidTokenAmount);
             }
             token1_deposited += coin.amount;
-            config.balances.token_1.amount += coin.amount;
         } else {
             // Return an error if an unsupported token is sent
             return Err(ContractError::InvalidToken);
@@ -72,8 +70,6 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         prices,
         deposit_value_0,
         deposit_value_1,
-        token0_deposited,
-        token1_deposited,
     )?;
 
     if amount_to_mint.is_zero() {
@@ -102,8 +98,6 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         .add_messages(messages)
         .add_attribute("action", "deposit")
         .add_attribute("from", info.sender.to_string())
-        .add_attribute("token_0_amount", config.balances.token_0.amount.to_string())
-        .add_attribute("token_1_amount", config.balances.token_1.amount.to_string())
         .add_attribute("minted_amount", amount_to_mint.to_string()))
 }
 
@@ -268,14 +262,6 @@ pub fn handle_dex_withdrawal_reply(
 ) -> Result<Response, ContractError> {
     match msg_result {
         SubMsgResult::Ok(result) => {
-            let mut config = CONFIG.load(deps.storage)?;
-            let (amount0, amount1) = extract_withdrawal_amounts(&result)?;
-
-            config.balances.token_0.amount += amount0;
-            config.balances.token_1.amount += amount1;
-
-            CONFIG.save(deps.storage, &config)?;
-
             Ok(Response::new().add_attribute("action", "withdrawal_reply_success"))
         }
         SubMsgResult::Err(err) => Ok(Response::new()
@@ -303,7 +289,7 @@ pub fn handle_withdrawal_reply(
             let prices: CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
             let (value_withdrawn_0, value_withdrawn_1) = get_token_value(prices.clone(), withdraw_amount_0, withdraw_amount_1)?;
             let value_withdrawn = value_withdrawn_0.checked_add(value_withdrawn_1)?;
-            
+
             config.value_deposited = config.value_deposited.checked_sub(value_withdrawn)?;
             CONFIG.save(deps.storage, &config)?;
 
