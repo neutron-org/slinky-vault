@@ -53,8 +53,9 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
 
     // Check if deposit would exceed the deposit cap
     let prices: CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
-    let deposit_value = get_token_value(prices.clone(), token0_deposited, token1_deposited)?;
-    let exceeds_cap = config.value_deposited.checked_add(deposit_value)? > PrecDec::from_atomics(config.deposit_cap, 0).unwrap();
+    let (deposit_value_0, deposit_value_1) = get_token_value(prices.clone(), token0_deposited, token1_deposited)?;
+    let deposit_value = deposit_value_0.checked_add(deposit_value_1)?;
+    let exceeds_cap = config.value_deposited.checked_add(deposit_value_0)? > PrecDec::from_atomics(config.deposit_cap, 0).unwrap();
     
     // Only enforce deposit cap for non-whitelisted addresses
     if exceeds_cap && !config.whitelist.contains(&info.sender) {
@@ -69,6 +70,8 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         &deps,
         config.clone(),
         prices,
+        deposit_value_0,
+        deposit_value_1,
         token0_deposited,
         token1_deposited,
     )?;
@@ -298,8 +301,10 @@ pub fn handle_withdrawal_reply(
 
             // update the deposited value
             let prices: CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
-            let value_withdrawn = get_token_value(prices.clone(), withdraw_amount_0, withdraw_amount_1)?;
-            config.value_deposited -= value_withdrawn;
+            let (value_withdrawn_0, value_withdrawn_1) = get_token_value(prices.clone(), withdraw_amount_0, withdraw_amount_1)?;
+            let value_withdrawn = value_withdrawn_0.checked_add(value_withdrawn_1)?;
+            
+            config.value_deposited = config.value_deposited.checked_sub(value_withdrawn)?;
             CONFIG.save(deps.storage, &config)?;
 
             let tick_index = price_to_tick_index(prices.price_0_to_1)?;

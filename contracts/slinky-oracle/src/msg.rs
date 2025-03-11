@@ -1,6 +1,4 @@
-use crate::{
-    state::TokenData,
-};
+use crate::state::TokenData;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

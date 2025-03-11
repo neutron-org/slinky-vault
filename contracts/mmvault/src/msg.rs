@@ -150,12 +150,6 @@ pub enum ExecuteMsg {
     DexWithdrawal {},
     // create the LP token
     CreateToken {},
-    // // pauses all deposit functionality
-    // Pause {},
-    // // helper to atomically purge and withdraw
-    // PurgeAnddWithdraw {},
-    // // helper to atomically purge and pause
-    // PurgeAndPause {},
     UpdateConfig {
         update: ConfigUpdateMsg,
     },

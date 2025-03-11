@@ -49,7 +49,7 @@ pub fn get_token_value(
     prices: CombinedPriceResponse,
     token0_deposited: Uint128,
     token1_deposited: Uint128,
-) -> ContractResult<PrecDec> {
+) -> ContractResult<(PrecDec, PrecDec)> {
     let mut value_0 = PrecDec::zero();
     let mut value_1 = PrecDec::zero();
 
@@ -64,8 +64,7 @@ pub fn get_token_value(
             .checked_mul(prices.token_1_price)?;
     }
 
-    let value = value_0.checked_add(value_1)?;
-    Ok(value)
+    Ok((value_0, value_1))
 }
 
 /// Queries the contract's balance for the specified token denoms
@@ -370,6 +369,8 @@ pub fn get_mint_amount(
     deps: &DepsMut,
     config: Config,
     prices: CombinedPriceResponse,
+    deposited_value_token_0: PrecDec,
+    deposited_value_token_1: PrecDec,
     deposit_amount_0: Uint128,
     deposit_amount_1: Uint128,
 ) -> Result<Uint128, ContractError> {
@@ -389,13 +390,6 @@ pub fn get_mint_amount(
         10u128.pow(config.pair_data.token_1.decimals.into()),
     ) * prices.token_1_price;
 
-    // Get the total value of the incoming tokens
-    let deposited_value_token_0 = PrecDec::from_atomics(deposit_amount_0, 0)
-        .map_err(|_| ContractError::DecimalConversionError)?
-        * prices.token_0_price;
-    let deposited_value_token_1 = PrecDec::from_atomics(deposit_amount_1, 0)
-        .map_err(|_| ContractError::DecimalConversionError)?
-        * prices.token_1_price;
 
     let total_value_combined = total_value_token_0 + total_value_token_1;
     let deposit_value_incoming = deposited_value_token_0
