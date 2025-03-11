@@ -49,6 +49,7 @@ pub struct ConfigUpdateMsg {
     pub fee_tier_config: Option<FeeTierConfig>,
     pub paused: Option<bool>,
     pub skew: Option<bool>,
+    pub imbalance: Option<u32>,
 }
 
 impl InstantiateMsg {

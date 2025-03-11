@@ -54,10 +54,12 @@ pub struct Config {
     pub deposit_cap: Uint128,
     pub fee_tier_config: FeeTierConfig,
     pub timestamp_stale: u64,
+    pub last_executed: u64,
     pub paused: bool,
     pub oracle_contract: Addr,
     pub value_deposited: PrecDec,
-    pub skew: bool
+    pub skew: bool,
+    pub imbalance: u32,
 }
 
 // pub const PAIRDATA: Item<PairData> = Item::new("data");

@@ -95,7 +95,6 @@ pub fn query_contract_balance(
     Ok(balances)
 }
 
-
 pub fn price_to_tick_index(price: PrecDec) -> Result<i64, ContractError> {
     // Ensure the price is greater than 0
     if price.is_zero() || price < PrecDec::zero() {
@@ -129,24 +128,24 @@ pub fn get_deposit_data(
     prices: &CombinedPriceResponse,
     base_deposit_percentage: u64,
     skew: bool,
+    config_imbalance: u32,
 ) -> Result<DepositResult, ContractError> {
-    // Calculate the base deposit amounts
-
     let computed_amount_0 = total_available_0.multiply_ratio(base_deposit_percentage, 100u128);
+    let computed_amount_1 = total_available_1.multiply_ratio(base_deposit_percentage, 100u128);
+
     // Calculate value in USD for token 0
-    let value_token_0 = PrecDec::from_atomics(total_available_0 - computed_amount_0, 0)
+    let value_token_0 = PrecDec::from_atomics(total_available_0, 0)
         .map_err(|_| ContractError::DecimalConversionError)?
         .checked_mul(prices.token_0_price)?;
 
-    let computed_amount_1 = total_available_1.multiply_ratio(base_deposit_percentage, 100u128);
     // Calculate value in USD for token 1
-    let value_token_1 = PrecDec::from_atomics(total_available_1 - computed_amount_1, 0)
+    let value_token_1 = PrecDec::from_atomics(total_available_1, 0)
         .map_err(|_| ContractError::DecimalConversionError)?
         .checked_mul(prices.token_1_price)?;
 
     let (final_amount_0, final_amount_1) = if value_token_0 > value_token_1 {
-        let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(50);
-        let additional_token_0 = imbalance / prices.token_0_price;
+        let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(config_imbalance);
+        let additional_token_0 = imbalance.checked_div(prices.token_0_price)?;
         (
             computed_amount_0
                 + Uint128::try_from(additional_token_0.to_uint_floor())
@@ -166,26 +165,33 @@ pub fn get_deposit_data(
         (computed_amount_0, computed_amount_1)
     };
 
-    let final_amount_0 = if final_amount_0 > total_available_0 {
+    let final_amount_0= if final_amount_0 > total_available_0 {
         total_available_0
+    } else if final_amount_0 < computed_amount_0 {
+        computed_amount_0
     } else {
         final_amount_0
     };
 
     let final_amount_1 = if final_amount_1 > total_available_1 {
         total_available_1
+    } else if final_amount_1 < computed_amount_1 {
+        computed_amount_1
     } else {
         final_amount_1
     };
-    
+
+    let total_value_token_0 = PrecDec::from_atomics(total_available_0, 0)
+        .map_err(|_| ContractError::DecimalConversionError)?
+        .checked_mul(prices.token_0_price)?;
+
+    let total_value_token_1 = PrecDec::from_atomics(total_available_1, 0)
+        .map_err(|_| ContractError::DecimalConversionError)?
+        .checked_mul(prices.token_1_price)?;
+
     // Calculate adjusted tick index based on token value imbalance
     let adjusted_tick_index = if skew {
-        calculate_adjusted_tick_index(
-            tick_index,
-            fee,
-            value_token_0,
-            value_token_1,
-        )?
+        calculate_adjusted_tick_index(tick_index, fee, total_value_token_0, total_value_token_1)?
     } else {
         tick_index
     };
@@ -200,7 +206,7 @@ pub fn get_deposit_data(
 }
 
 /// Calculates an adjusted tick index based on token value imbalance
-/// 
+///
 /// If values are balanced, no adjustment is made
 /// If token0 value dominates tick index is linearly increased (up to fee-1)
 /// If token1 value dominates tick index is linearly decreased (up to fee-1)
@@ -210,7 +216,7 @@ pub fn calculate_adjusted_tick_index(
     value_token_0: PrecDec,
     value_token_1: PrecDec,
 ) -> Result<i64, ContractError> {
-    // If either value is zero, handle the edge cases
+    // If values are zero
     if value_token_0.is_zero() && value_token_1.is_zero() {
         return Ok(base_tick_index); // No adjustment if both values are zero
     }
@@ -220,21 +226,21 @@ pub fn calculate_adjusted_tick_index(
     if max_adjustment <= 0 {
         return Ok(base_tick_index); // No adjustment possible if fee <= 1
     }
-    
+
     // Calculate the total value
     let total_value = value_token_0.checked_add(value_token_1)?;
-    
+
     // Handle edge cases
     if value_token_0.is_zero() {
         // Token1 completely dominates, move tick down by max_adjustment
         return Ok(base_tick_index - max_adjustment);
     }
-    
+
     if value_token_1.is_zero() {
         // Token0 completely dominates, move tick up by max_adjustment
         return Ok(base_tick_index + max_adjustment);
     }
-    
+
     // Calculate the imbalance ratio (-1.0 to 1.0)
     // -1.0 means token1 completely dominates
     // 1.0 means token0 completely dominates
@@ -242,17 +248,17 @@ pub fn calculate_adjusted_tick_index(
     let imbalance = value_token_0
         .checked_sub(value_token_1)?
         .checked_div(total_value)?;
-    
+
     // Convert the imbalance to a tick adjustment
     // We need to convert PrecDec to f64 for the calculation
     let imbalance_f64 = imbalance
         .to_string()
         .parse::<f64>()
         .map_err(|_| ContractError::ConversionError)?;
-    
+
     // Calculate the adjustment linearly based on the imbalance
     let adjustment = (imbalance_f64 * max_adjustment as f64).round() as i64;
-    
+
     // Apply the adjustment to the base tick index
     Ok(base_tick_index + adjustment)
 }
@@ -371,20 +377,23 @@ pub fn get_mint_amount(
         .map_err(|_| ContractError::DecimalConversionError)?
         .checked_mul(prices.token_1_price)?;
 
-    let total_value_combined = total_value_token_0.checked_add(total_value_token_1)?;
     let deposit_value_incoming = deposited_value_token_0
         .checked_add(deposited_value_token_1)
         .unwrap();
+    let total_value_existing = total_value_token_0
+        .checked_add(total_value_token_1)?
+        .checked_sub(deposit_value_incoming)?;
 
     if config.total_shares == Uint128::zero() {
         // Initial deposit - set shares equal to deposit value
-        total_shares = deposit_value_incoming.checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))?;
+        total_shares =
+            deposit_value_incoming.checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))?;
     } else {
         // Calculate proportional shares based on the ratio of deposit value to total value
         total_shares = deposit_value_incoming
             .checked_mul(PrecDec::from_ratio(config.total_shares, 1u128))
             .map_err(|_| ContractError::ConversionError)?
-            .checked_div(total_value_combined)
+            .checked_div(total_value_existing)
             .map_err(|_| ContractError::ConversionError)?;
     }
 
@@ -434,6 +443,7 @@ pub fn get_deposit_messages(
         &prices,
         config.fee_tier_config.fee_tiers[0].percentage,
         config.skew,
+        config.imbalance,
     )?;
 
     // Only create base deposit message if amounts are greater than zero
@@ -518,15 +528,17 @@ pub fn get_withdrawal_messages(
     config: &Config,
     burn_amount: Uint128,
     beneficiary: String,
+    total_amount_0: Uint128,
+    total_amount_1: Uint128,
 ) -> Result<(Vec<CosmosMsg>, Uint128, Uint128), ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
 
-    let balances = get_virtual_contract_balance(env.clone(), deps, config.clone())?;
     let total_supply: Uint128 = deps.querier.query_supply(&config.lp_denom)?.amount;
+
     // Calculate withdrawal amounts using multiplication before division to prevent precision loss
-    // and potential overflow
-    let withdraw_amount_0 = balances.0.multiply_ratio(burn_amount, total_supply);
-    let withdraw_amount_1 = balances.1.multiply_ratio(burn_amount, total_supply);
+    // and potential overflow. result is floored by default
+    let withdraw_amount_0 = total_amount_0.multiply_ratio(burn_amount, total_supply);
+    let withdraw_amount_1 = total_amount_1.multiply_ratio(burn_amount, total_supply);
 
     // burn the LP tokens
     let burn_msg = MsgBurn {
@@ -543,7 +555,7 @@ pub fn get_withdrawal_messages(
 
     messages.push(burn_msg.into());
 
-    if !(balances.0.is_zero() && withdraw_amount_0.is_zero()) {
+    if !(withdraw_amount_0.is_zero()) {
         messages.push(
             BankMsg::Send {
                 to_address: beneficiary.clone(),
@@ -556,7 +568,7 @@ pub fn get_withdrawal_messages(
         );
     }
 
-    if !(balances.1.is_zero() && withdraw_amount_1.is_zero()) {
+    if !(withdraw_amount_1.is_zero()) {
         messages.push(
             BankMsg::Send {
                 to_address: beneficiary.clone(),

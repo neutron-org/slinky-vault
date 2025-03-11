@@ -83,11 +83,13 @@ pub fn instantiate(
         total_shares: Uint128::zero(),
         whitelist,
         deposit_cap: msg.deposit_cap,
+        last_executed: 0,
         timestamp_stale: msg.timestamp_stale,
         paused: msg.paused,
         oracle_contract: oracle_contract.clone(),
         value_deposited: PrecDec::zero(),
         skew: false,
+        imbalance: 50u32
     };
 
     // PAIRDATA.save(deps.storage, &pool_data)?;

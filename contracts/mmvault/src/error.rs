@@ -20,6 +20,9 @@ pub enum ContractError {
     #[error("No response data from place limit order")]
     NoResponseData,
 
+    #[error("Contract Already Has Active Deposits")]
+    ActiveDepositsExist,
+
     #[error("BadTokenB")]
     BadTokenB,
 
