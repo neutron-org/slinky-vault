@@ -147,8 +147,7 @@ pub fn get_deposit_data(
         let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(config_imbalance);
         let additional_token_0 = imbalance.checked_div(prices.token_0_price)?;
         (
-            computed_amount_0
-                + Uint128::try_from(additional_token_0.to_uint_floor())
+            Uint128::try_from(additional_token_0.to_uint_floor())
                     .map_err(|_| ContractError::ConversionError)?,
             computed_amount_1,
         )
@@ -157,9 +156,8 @@ pub fn get_deposit_data(
         let additional_token_1 = imbalance.checked_div(prices.token_1_price)?;
         (
             computed_amount_0,
-            computed_amount_1
-                + Uint128::try_from(additional_token_1.to_uint_floor())
-                    .map_err(|_| ContractError::ConversionError)?,
+            Uint128::try_from(additional_token_1.to_uint_floor())
+                .map_err(|_| ContractError::ConversionError)?,
         )
     } else {
         (computed_amount_0, computed_amount_1)

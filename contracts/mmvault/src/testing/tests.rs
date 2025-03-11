@@ -207,8 +207,6 @@ fn test_deposit() {
         deposit_msg,
     ).expect("Deposit should succeed");
 
-
-
     // Verify that the response contains the expected attributes
     assert!(deposit_response.attributes.iter().any(|attr| attr.key == "action" && attr.value == "deposit"));
     assert!(deposit_response.attributes.iter().any(|attr| attr.key == "from"));
