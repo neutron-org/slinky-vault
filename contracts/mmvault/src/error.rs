@@ -17,6 +17,9 @@ pub enum ContractError {
     #[error("Failed to decode response data")]
     DecodingError,
 
+    #[error("Current block is on hold due to a stale price")]
+    BlockOnHold,
+
     #[error("No response data from place limit order")]
     NoResponseData,
 

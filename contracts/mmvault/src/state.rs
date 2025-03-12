@@ -1,13 +1,11 @@
-use cosmwasm_std::{Addr, Coin, Uint128};
+use cosmwasm_std::{Addr, Uint128};
 use cw_storage_plus::Item;
 use neutron_std::types::slinky::types::v1::CurrencyPair;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use neutron_std::types::neutron::util::precdec::PrecDec;
 
 pub const CREATE_TOKEN_REPLY_ID: u64 = 1;
 pub const WITHDRAW_REPLY_ID: u64 = 2;
-pub const DEX_WITHDRAW_REPLY_ID: u64 = 3;
 pub const SHARES_MULTIPLIER: u64 = 1000000000;
 
 
@@ -41,7 +39,6 @@ pub struct FeeTierConfig {
     pub fee_tiers: Vec<FeeTier>,
 }
 
-
 /// This structure stores the concentrated pair parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -55,9 +52,9 @@ pub struct Config {
     pub fee_tier_config: FeeTierConfig,
     pub timestamp_stale: u64,
     pub last_executed: u64,
+    pub pause_block: u64,
     pub paused: bool,
     pub oracle_contract: Addr,
-    pub value_deposited: PrecDec,
     pub skew: bool,
     pub imbalance: u32,
 }

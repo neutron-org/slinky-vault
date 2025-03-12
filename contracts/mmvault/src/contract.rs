@@ -2,12 +2,11 @@ use crate::error::{ContractError, ContractResult};
 use crate::execute::*;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload};
 use crate::query::*;
-use crate::state::{Config, FeeTierConfig, FeeTier, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_WITHDRAW_REPLY_ID, WITHDRAW_REPLY_ID};
+use crate::state::{Config, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, WITHDRAW_REPLY_ID};
 use crate::utils::*;
 use cosmwasm_std::{
     attr, entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128, Addr
 };
-use neutron_std::types::neutron::util::precdec::PrecDec;
 use cw2::set_contract_version;
 use prost::Message;
 use std::str::FromStr;
@@ -74,8 +73,7 @@ pub fn instantiate(
         pair_id: id.clone(),
     };
 
-    let fee_tier: FeeTier = FeeTier { fee: 0, percentage: 0 };
-    let fee_tier_config = FeeTierConfig { fee_tiers: vec![fee_tier] };
+    let fee_tier_config = msg.fee_tier_config;
     let config = Config {
         pair_data: pairs.clone(),
         fee_tier_config,
@@ -84,10 +82,10 @@ pub fn instantiate(
         whitelist,
         deposit_cap: msg.deposit_cap,
         last_executed: 0,
+        pause_block: 0,
         timestamp_stale: msg.timestamp_stale,
         paused: msg.paused,
         oracle_contract: oracle_contract.clone(),
-        value_deposited: PrecDec::zero(),
         skew: false,
         imbalance: 50u32
     };
@@ -136,7 +134,7 @@ pub fn execute(
             if lp_token.denom != config.lp_denom || lp_token.amount != amount {
                 return Err(ContractError::LpTokenError);
             }
-            withdraw(deps, _env, info, amount, config)
+            withdraw(deps, _env, info, amount)
         }
         ExecuteMsg::DexDeposit { .. } => {
             // Prevent tokens from being sent with the Withdraw message
@@ -216,7 +214,6 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
 
             handle_withdrawal_reply(deps, env, msg.result, amount, payload.sender)
         }
-        DEX_WITHDRAW_REPLY_ID => handle_dex_withdrawal_reply(deps, env, msg.result),
         id => Err(ContractError::UnknownReplyId { id }),
     }
 }

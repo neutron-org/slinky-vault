@@ -3,7 +3,7 @@ use crate::msg::{CombinedPriceResponse, DepositResult};
 use crate::state::{Config, PairData, TokenData, CONFIG, SHARES_MULTIPLIER};
 use cosmwasm_std::{
     BalanceResponse, BankMsg, BankQuery, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, QueryRequest,
-    ReplyOn, SubMsg, SubMsgResponse, Uint128,
+    ReplyOn, SubMsg, SubMsgResponse, Uint128, Response, MessageInfo
 };
 use neutron_std::types::neutron::dex::{
     DepositOptions, DexQuerier, MsgDeposit, MsgWithdrawal, MsgWithdrawalResponse,
@@ -145,27 +145,29 @@ pub fn get_deposit_data(
 
     let (final_amount_0, final_amount_1) = if value_token_0 > value_token_1 {
         let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(config_imbalance);
+        
         let additional_token_0 = imbalance.checked_div(prices.token_0_price)?;
-        (
-            computed_amount_0
+        
+        let final_0 = computed_amount_0
                 + Uint128::try_from(additional_token_0.to_uint_floor())
-                    .map_err(|_| ContractError::ConversionError)?,
-            computed_amount_1,
-        )
+                    .map_err(|_| ContractError::ConversionError)?;
+        let final_1 = computed_amount_1;
+        (final_0, final_1)
     } else if value_token_1 > value_token_0 {
-        let imbalance = (value_token_1 - value_token_0).checked_mul(PrecDec::percent(50))?;
+        let imbalance = (value_token_1 - value_token_0) * PrecDec::percent(config_imbalance);
+        
         let additional_token_1 = imbalance.checked_div(prices.token_1_price)?;
-        (
-            computed_amount_0,
-            computed_amount_1
+        
+        let final_0 = computed_amount_0;
+        let final_1 = computed_amount_1
                 + Uint128::try_from(additional_token_1.to_uint_floor())
-                    .map_err(|_| ContractError::ConversionError)?,
-        )
+                    .map_err(|_| ContractError::ConversionError)?;
+        (final_0, final_1)
     } else {
         (computed_amount_0, computed_amount_1)
     };
 
-    let final_amount_0= if final_amount_0 > total_available_0 {
+    let final_amount_0 = if final_amount_0 > total_available_0 {
         total_available_0
     } else {
         final_amount_0
@@ -187,6 +189,7 @@ pub fn get_deposit_data(
 
     // Calculate adjusted tick index based on token value imbalance
     let adjusted_tick_index = if skew {
+        
         calculate_adjusted_tick_index(tick_index, fee, total_value_token_0, total_value_token_1)?
     } else {
         tick_index
@@ -352,18 +355,14 @@ pub fn get_virtual_contract_balance(
 }
 
 pub fn get_mint_amount(
-    env: Env,
-    deps: &DepsMut,
     config: Config,
     prices: CombinedPriceResponse,
     deposited_value_token_0: PrecDec,
     deposited_value_token_1: PrecDec,
+    total_amount_0: Uint128,
+    total_amount_1: Uint128,
 ) -> Result<Uint128, ContractError> {
-    let mut total_shares = PrecDec::zero();
-    let balances = query_contract_balance(deps, env.clone(), config.pair_data.clone())?;
-
-    //get total contract balance:
-    let (total_amount_0, total_amount_1) = get_virtual_contract_balance(env, deps, config.clone())?;
+    let mut total_shares: PrecDec = PrecDec::zero();
 
     // Get the total value of the remaining tokens
     let total_value_token_0 = PrecDec::from_atomics(total_amount_0, 0)
@@ -382,11 +381,11 @@ pub fn get_mint_amount(
 
     if config.total_shares == Uint128::zero() {
         // Initial deposit - set shares equal to deposit value
-        total_shares =
+        let total_shares =
             deposit_value_incoming.checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))?;
     } else {
         // Calculate proportional shares based on the ratio of deposit value to total value
-        total_shares = deposit_value_incoming
+        let total_shares = deposit_value_incoming
             .checked_mul(PrecDec::from_ratio(config.total_shares, 1u128))
             .map_err(|_| ContractError::ConversionError)?
             .checked_div(total_value_existing)
@@ -397,7 +396,7 @@ pub fn get_mint_amount(
         return Err(ContractError::InvalidTokenAmount);
     }
 
-    Ok(precdec_to_uint128(total_shares)?)
+    precdec_to_uint128(total_shares)
 }
 
 pub fn precdec_to_uint128(precdec: PrecDec) -> Result<Uint128, ContractError> {
@@ -441,7 +440,6 @@ pub fn get_deposit_messages(
         config.skew,
         config.imbalance,
     )?;
-
     // Only create base deposit message if amounts are greater than zero
     if deposit_data.amount0 > Uint128::zero() || deposit_data.amount1 > Uint128::zero() {
         let dex_msg = Into::<CosmosMsg>::into(MsgDeposit {
@@ -579,4 +577,55 @@ pub fn get_withdrawal_messages(
         );
     }
     Ok((messages, withdraw_amount_0, withdraw_amount_1))
+}
+
+
+/// Checks if the contract is stale and handles the pause logic.
+/// Returns Ok(None) if the contract is not stale or on hold.
+/// Returns Ok(Some(Response)) if the contract is stale and funds need to be returned.
+/// Returns Err if the contract is on hold.
+pub fn check_staleness(
+    env: &Env,
+    info: &MessageInfo,
+    config: &mut Config,
+) -> Result<Option<Response>, ContractError> {
+    // get the last executed timestamp.
+    let is_stale: bool = (env.block.time.seconds() - config.last_executed) > config.timestamp_stale;
+
+    // if we are currently on hold, block all calls during this block height.
+    if config.pause_block == env.block.height {
+        return Err(ContractError::BlockOnHold {});
+    }
+
+    // if we are stale but not on hold, we should set the pause_block to the current block.
+    // If next block comes in a timely manner (less than timestamp_stale), we should no longer be stale
+    // and should be clear of the pause_block as it is only set when stale.
+    if is_stale {
+        config.last_executed = env.block.time.seconds();
+        config.pause_block = env.block.height;
+
+        // Return a response with the updated config and messages
+        let mut messages: Vec<CosmosMsg> = vec![];
+        for coin in info.funds.iter() {
+            messages.push(
+                BankMsg::Send {
+                    to_address: info.sender.to_string(),
+                    amount: vec![Coin {
+                        denom: coin.denom.clone(),
+                        amount: coin.amount,
+                    }],
+                }
+                .into(),
+            );
+        }
+
+        // The caller will save the config
+        return Ok(Some(Response::new().add_messages(messages)));
+    }
+
+    // Update the timestamp but don't save yet
+    config.last_executed = env.block.time.seconds();
+
+    // The caller will save the config
+    Ok(None)
 }

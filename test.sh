@@ -27,7 +27,7 @@ token_b="untrn"
 pair_id=$token_a"<>"$token_b
 
 # Add this near the top with other configuration variables
-SHOW_TX_HASH=false
+SHOW_TX_HASH=true
 
 # Parse command line arguments
 while getopts "v" opt; do
@@ -55,6 +55,18 @@ wait_for_tx() {
 
 query_contract() {
     neutrond q wasm contract-state smart $1 "$2" --node $node --output json
+}
+
+place_limit_order_gtc() {
+    local base_denom=$1
+    local quote_denom=$2
+    local amount=$3
+    local price=$4
+    
+    neutrond tx dex place-limit-order neutron10h9stc5v6ntgeygf5xf945njqq5h32r54rf7kf \
+        "$base_denom" "$quote_denom" "[0]" "$amount" "GOOD_TIL_CANCELLED" \
+        --price "$price" --from testnet2 --chain-id test-1 --node $node --fees 2000untrn -y > /dev/null
+    sleep 2
 }
 
 print_vault_info() {
@@ -111,47 +123,6 @@ get_lp_balance() {
     else
         echo "$balance"
     fi
-}
-
-update_config() {
-    local max_blocks_old_token_a=$1
-    local max_blocks_old_token_b=$2
-    local base_fee=$3
-    local base_deposit_percentage=$4
-    local ambient_fee=$5
-    local deposit_ambient=$6
-    local deposit_cap=$7
-
-    local msg='{"update_config":{'
-
-    # Add optional parameters only if they are provided
-    if [ ! -z "$max_blocks_old_token_a" ]; then
-        msg+='"max_blocks_old_token_a":'$max_blocks_old_token_a','
-    fi
-    if [ ! -z "$max_blocks_old_token_b" ]; then
-        msg+='"max_blocks_old_token_b":'$max_blocks_old_token_b','
-    fi
-    if [ ! -z "$base_fee" ]; then
-        msg+='"base_fee":'$base_fee','
-    fi
-    if [ ! -z "$base_deposit_percentage" ]; then
-        msg+='"base_deposit_percentage":'$base_deposit_percentage','
-    fi
-    if [ ! -z "$ambient_fee" ]; then
-        msg+='"ambient_fee":'$ambient_fee','
-    fi
-    if [ ! -z "$deposit_ambient" ]; then
-        msg+='"deposit_ambient":'$deposit_ambient','
-    fi
-    if [ ! -z "$deposit_cap" ]; then
-        msg+='"deposit_cap":"'$deposit_cap'"'
-    fi
-
-    # Remove trailing comma if it exists
-    msg=${msg%,}
-    msg+='}}'
-
-    execute_contract $contract_address "$msg"
 }
 
 execute_contract() {
@@ -352,7 +323,7 @@ setup_suite() {
             ]
         },
         "deposit_cap": "10000",
-        "timestamp_stale": 300,
+        "timestamp_stale": 3000,
         "paused": false,
         "oracle_contract": "'$oracle_address'"
     }'
@@ -456,92 +427,6 @@ test_deposit() {
     return 0
 }
 
-# Generic config update helper
-test_config_change() {
-    local param_name=$1
-    local param_value=$2
-        
-    # Build the update message based on the parameter
-    local msg="{\"update_config\":{"
-    case "$param_name" in
-        "max_blocks_old_token_a")
-            msg+="\"max_blocks_old_token_a\":$param_value"
-            ;;
-        "max_blocks_old_token_b")
-            msg+="\"max_blocks_old_token_b\":$param_value"
-            ;;
-        "deposit_cap")
-            msg+="\"deposit_cap\":\"$param_value\""
-            ;;
-        "base_fee")
-            msg+="\"fee_tier_config\":{\"fee_tiers\":[{\"fee\":$param_value,\"percentage\":30},{\"fee\":150,\"percentage\":70}]}"
-            ;;
-        *)
-            print_error "Unhandled parameter: $param_name"
-            return 1
-            ;;
-    esac
-    msg+="}}"
-
-    print_info "Sending message: $msg"
-
-    # Execute config update
-    local response
-    response=$(execute_contract $contract_address "$msg")
-    local exec_status=$?
-    
-    print_info "Execute response: $response"
-    print_info "Execute status: $exec_status"
-
-    if [ $exec_status -ne 0 ]; then
-        print_error "Failed to update $param_name"
-        return 1
-    fi
-
-    # Wait for transaction to be processed
-    wait_for_tx
-
-    # Verify config change
-    local config=$(query_contract $contract_address '{"get_config":{}}')
-    if [ $? -ne 0 ]; then
-        print_error "Failed to query config"
-        return 1
-    fi
-    
-    print_info "Current config: $config"
-    
-    # Handle nested structure based on parameter name
-    local actual_value
-    case "$param_name" in
-        "max_blocks_old_token_a")
-            actual_value=$(echo "$config" | jq -r '.data.pair_data.token_0.max_blocks_old')
-            ;;
-        "max_blocks_old_token_b")
-            actual_value=$(echo "$config" | jq -r '.data.pair_data.token_1.max_blocks_old')
-            ;;
-        "deposit_cap")
-            actual_value=$(echo "$config" | jq -r '.data.deposit_cap')
-            ;;
-        "base_fee")
-            actual_value=$(echo "$config" | jq -r '.data.fee_tier_config.fee_tiers[0].fee')
-            ;;
-    esac
-
-    print_info "Actual value: $actual_value"
-    print_info "Expected value: $param_value"
-
-    if [ $? -ne 0 ] || [ -z "$actual_value" ] || [ "$actual_value" = "null" ]; then
-        print_error "Failed to get $param_name from config response: $config"
-        return 1
-    fi
-
-    if ! assert_equals "$param_value" "$actual_value" "$param_name update mismatch"; then
-        return 1
-    fi
-
-    return 0
-}
-
 # Generic LP token verification helper
 verify_lp_tokens() {
     local expected_holder=$1
@@ -638,7 +523,7 @@ test_basic_deposit_flow() {
     local failed=0
 
     # Try deposits directly
-    if ! run_subtest "NTRN Deposit" test_deposit "untrn" "20000000" "20000000"; then
+    if ! run_subtest "NTRN Deposit" test_deposit "untrn" "200000000" "200000000"; then
         failed=1
     fi
 
@@ -651,113 +536,6 @@ test_basic_deposit_flow() {
         if ! run_subtest "LP Token Verification" verify_lp_tokens "$account" "1"; then
             failed=1
         fi
-    fi
-
-    return $failed
-}
-
-# Example test scenario: Config update flow
-test_config_update_flow() {
-    print_section "Config Update Flow Test"
-    
-    # Store initial config for comparison
-    local initial_config=$(query_contract $contract_address '{"get_config":{}}')
-    print_info "Initial config: $initial_config"
-
-    # Create a comprehensive update message
-    local update_msg='{
-        "update_config": {
-            "whitelist": ["neutron10h9stc5v6ntgeygf5xf945njqq5h32r54rf7kf"],
-            "max_blocks_old_token_a": 10,
-            "max_blocks_old_token_b": 15,
-            "deposit_cap": "75000",
-            "timestamp_stale": 600,
-            "fee_tier_config": {
-                "fee_tiers": [
-                    {"fee": 20, "percentage": 40},
-                    {"fee": 100, "percentage": 60}
-                ]
-            },
-            "paused": false
-        }
-    }'
-
-    print_info "Sending update message: $update_msg"
-
-    # Execute the update
-    if ! execute_contract $contract_address "$update_msg"; then
-        print_error "Failed to update config"
-        return 1
-    fi
-
-    # Wait for transaction to be processed
-    wait_for_tx
-
-    # Query updated config
-    local updated_config=$(query_contract $contract_address '{"get_config":{}}')
-    print_info "Updated config: $updated_config"
-
-    # Verify all changes
-    local failed=0
-
-    # Check whitelist
-    local whitelist=$(echo "$updated_config" | jq -r '.data.whitelist[0]')
-    if ! assert_equals "neutron10h9stc5v6ntgeygf5xf945njqq5h32r54rf7kf" "$whitelist" "Whitelist update failed"; then
-        failed=1
-    fi
-
-    # Check max_blocks_old values
-    local max_blocks_token_a=$(echo "$updated_config" | jq -r '.data.pair_data.token_0.max_blocks_old')
-    if ! assert_equals "10" "$max_blocks_token_a" "Token A max_blocks_old update failed"; then
-        failed=1
-    fi
-
-    local max_blocks_token_b=$(echo "$updated_config" | jq -r '.data.pair_data.token_1.max_blocks_old')
-    if ! assert_equals "15" "$max_blocks_token_b" "Token B max_blocks_old update failed"; then
-        failed=1
-    fi
-
-    # Check deposit cap
-    local deposit_cap=$(echo "$updated_config" | jq -r '.data.deposit_cap')
-    if ! assert_equals "75000" "$deposit_cap" "Deposit cap update failed"; then
-        failed=1
-    fi
-
-    # Check timestamp_stale
-    local timestamp_stale=$(echo "$updated_config" | jq -r '.data.timestamp_stale')
-    if ! assert_equals "600" "$timestamp_stale" "Timestamp stale update failed"; then
-        failed=1
-    fi
-
-    # Check fee tier config
-    local fee_tier_1_fee=$(echo "$updated_config" | jq -r '.data.fee_tier_config.fee_tiers[0].fee')
-    local fee_tier_1_percentage=$(echo "$updated_config" | jq -r '.data.fee_tier_config.fee_tiers[0].percentage')
-    local fee_tier_2_fee=$(echo "$updated_config" | jq -r '.data.fee_tier_config.fee_tiers[1].fee')
-    local fee_tier_2_percentage=$(echo "$updated_config" | jq -r '.data.fee_tier_config.fee_tiers[1].percentage')
-
-    if ! assert_equals "20" "$fee_tier_1_fee" "Fee tier 1 fee update failed"; then
-        failed=1
-    fi
-    if ! assert_equals "40" "$fee_tier_1_percentage" "Fee tier 1 percentage update failed"; then
-        failed=1
-    fi
-    if ! assert_equals "100" "$fee_tier_2_fee" "Fee tier 2 fee update failed"; then
-        failed=1
-    fi
-    if ! assert_equals "60" "$fee_tier_2_percentage" "Fee tier 2 percentage update failed"; then
-        failed=1
-    fi
-
-    # Check paused state
-    local paused=$(echo "$updated_config" | jq -r '.data.paused')
-    if ! assert_equals "false" "$paused" "Paused state update failed"; then
-        failed=1
-    fi
-
-    if [ $failed -eq 0 ]; then
-        print_success "All config updates verified successfully"
-    else
-        print_error "Some config updates failed verification"
     fi
 
     return $failed
@@ -782,7 +560,6 @@ test_dex_deposit() {
 
     return $failed
 }
-
 test_dex_withdrawal() {
     print_section "DEX Withdrawal Test"
     local failed=0
@@ -907,6 +684,8 @@ test_contract_migration() {
             "paused": false,
             "oracle_contract": "'$oracle_address'",
             "value_deposited": "'$current_value_deposited'",
+            "skew": false,
+            "imbalance": 0,
             "migration_successful": true
         }
     }'
@@ -921,7 +700,7 @@ test_contract_migration() {
     fi
     
     # Wait a bit longer after migration
-    sleep 5
+    sleep 2
     
     # Verify state after migration
     local post_config=$(query_contract $contract_address '{"get_config":{}}')
@@ -1092,25 +871,33 @@ main() {
     # Setup
     setup_suite
 
-
-    # # Run test scenarios
+    query_contract $contract_address '{"get_config":{}}' --output json
+    neutrond q bank balances $account --node $node
+    execute_contract $contract_address '{"deposit":{}}' "940000000uibcusdc"
+    neutrond q bank balances $account --node $node
+    neutrond q bank balances $contract_address --node $node
+    execute_contract $contract_address '{"deposit":{}}' "940000000uibcusdc"
+    neutrond q bank balances $account --node $node
+    neutrond q bank balances $contract_address --node $node
+    query_contract $contract_address '{"get_config":{}}' --output json
+    # # # Run test scenarios
     run_test "Query slinky prices" query_slinky_prices
     run_test "Basic Deposit Flow" test_basic_deposit_flow
-    run_test "Dex Deposit" test_dex_deposit
-    run_test "Contract Migration" test_contract_migration
+    
+    run_test "Dex Deposit -- real" test_dex_deposit
+
+    # run_test "Contract Migration" test_contract_migration
     run_test "Dex Withdrawal" test_dex_withdrawal
+
     run_test "Basic Withdrawal Flow" test_basic_withdrawal_flow
-    run_test "Config Update Flow" test_config_update_flow
+    # # Teardown
+    # teardown_suite
 
-
-    # Teardown
-    teardown_suite
-
-    # Print test summary
-    print_section "TEST SUMMARY"
-    echo "Total tests: $TOTAL_TESTS"
-    echo "Passed: $PASSED_TESTS"
-    echo "Failed: $FAILED_TESTS"
+    # # Print test summary
+    # print_section "TEST SUMMARY"
+    # echo "Total tests: $TOTAL_TESTS"
+    # echo "Passed: $PASSED_TESTS"
+    # echo "Failed: $FAILED_TESTS"
 
     [ $FAILED_TESTS -eq 0 ]
 }

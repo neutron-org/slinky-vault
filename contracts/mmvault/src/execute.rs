@@ -1,12 +1,12 @@
 use crate::error::ContractError;
 use crate::msg::{CombinedPriceResponse, ConfigUpdateMsg, WithdrawPayload};
 use crate::state::{
-    Config, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_WITHDRAW_REPLY_ID, WITHDRAW_REPLY_ID,
+    CONFIG, CREATE_TOKEN_REPLY_ID, WITHDRAW_REPLY_ID,
 };
 use crate::utils::*;
 use cosmwasm_std::{
-    Addr, Binary, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult,
-    Uint128,
+    Addr, Binary, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg,
+    SubMsgResult, Uint128,
 };
 use neutron_std::types::neutron::dex::{DexQuerier, MsgWithdrawal, QueryAllUserDepositsResponse};
 use neutron_std::types::neutron::util::precdec::PrecDec;
@@ -15,8 +15,14 @@ use prost::Message;
 
 pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
-    // Load the contract configuration from storage
+    // Load the contract configuration
     let mut config = CONFIG.load(deps.storage)?;
+
+    if let Some(response) = check_staleness(&env, &info, &mut config)? {
+        CONFIG.save(deps.storage, &config)?;
+        return Ok(response);
+    }
+    CONFIG.save(deps.storage, &config)?;
 
     // Extract the sent funds from the transaction info
     let sent_funds = info.funds;
@@ -46,13 +52,22 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
             return Err(ContractError::InvalidToken);
         }
     }
-
-    // Check if deposit would exceed the deposit cap
+    // load token prices
     let prices: CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
+
+    // get total contract balance, including value in active deposits.
+    let (total_amount_0, total_amount_1) =
+        get_virtual_contract_balance(env.clone(), &deps, config.clone())?;
+
+    // Get the value of the tokens in the contract
     let (deposit_value_0, deposit_value_1) =
-        get_token_value(prices.clone(), token0_deposited, token1_deposited)?;
+        get_token_value(prices.clone(), total_amount_0, total_amount_1)?;
+
+    // calculate the total deposit value
     let deposit_value = deposit_value_0.checked_add(deposit_value_1)?;
-    let exceeds_cap = config.value_deposited.checked_add(deposit_value_0)?
+
+    // check if they exceed the cap
+    let exceeds_cap = deposit_value.checked_add(deposit_value_0)?
         > PrecDec::from_atomics(config.deposit_cap, 0).unwrap();
 
     // Only enforce deposit cap for non-whitelisted addresses
@@ -60,16 +75,14 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         return Err(ContractError::ExceedsDepositCap {});
     }
 
-    // update the deposit value
-    config.value_deposited += deposit_value;
-
+    // get the amount of LP tokens to mint
     let amount_to_mint = get_mint_amount(
-        env.clone(),
-        &deps,
         config.clone(),
         prices,
         deposit_value_0,
         deposit_value_1,
+        total_amount_0,
+        total_amount_1,
     )?;
 
     if amount_to_mint.is_zero() {
@@ -90,9 +103,6 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
     };
     messages.push(mint_msg.into());
 
-    // Save the updated configuration with new balances back to the contract's storage
-    CONFIG.save(deps.storage, &config)?;
-
     // Return a success response with updated balances
     Ok(Response::new()
         .add_messages(messages)
@@ -106,8 +116,15 @@ pub fn withdraw(
     env: Env,
     info: MessageInfo,
     amount: Uint128,
-    config: Config,
 ) -> Result<Response, ContractError> {
+    // Load the contract configuration
+    let mut config = CONFIG.load(deps.storage)?;
+
+    if let Some(response) = check_staleness(&env, &info, &mut config)? {
+        CONFIG.save(deps.storage, &config)?;
+        return Ok(response);
+    }
+    CONFIG.save(deps.storage, &config)?;
     let payload = WithdrawPayload {
         sender: info.sender.to_string(),
         amount: amount.to_string(),
@@ -168,16 +185,12 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     // Load the contract configuration
     let mut config = CONFIG.load(deps.storage)?;
 
-    // get the last executed timestamp.
-    let is_stale: bool = (env.block.time.seconds() - config.last_executed) > config.timestamp_stale;
-
-    config.last_executed = env.block.time.seconds();
-    // update the timestamp_stale to the current timestamp.
-    CONFIG.save(deps.storage, &config)?;
-
-    if is_stale {
-        return Ok(Response::new());
+    if let Some(response) = check_staleness(&env, &info, &mut config)? {
+        CONFIG.save(deps.storage, &config)?;
+        return Ok(response);
     }
+
+    CONFIG.save(deps.storage, &config)?;
 
     if config.paused {
         return Err(ContractError::Paused {});
@@ -191,9 +204,9 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     let dex_querier = DexQuerier::new(&deps.querier);
     let res: QueryAllUserDepositsResponse =
         dex_querier.user_deposits_all(env.contract.address.to_string(), None, true)?;
-    
+
     if !res.deposits.is_empty() {
-        return Err(ContractError::ActiveDepositsExist{});
+        return Err(ContractError::ActiveDepositsExist {});
     }
 
     // get the current slinky price and tick index
@@ -210,7 +223,7 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
         balances[0].amount,
         balances[1].amount,
     )?;
-
+    deps.api.debug(&format!(">>>>>>messages: {:?}", messages));
     Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "dex_deposit"))
@@ -221,9 +234,7 @@ pub fn dex_withdrawal(
     env: Env,
     info: MessageInfo,
 ) -> Result<Response, ContractError> {
-    // Load the contract configuration to access the owner address and balances
     let config = CONFIG.load(deps.storage)?;
-
     // Verify that the sender is the owner
     if !config.whitelist.contains(&info.sender) {
         return Err(ContractError::Unauthorized {});
@@ -256,27 +267,8 @@ pub fn dex_withdrawal(
 
     // Add the message to the response and return
     Ok(Response::new()
-        .add_submessages(flatten_msgs_always_reply(
-            &[messages],
-            DEX_WITHDRAW_REPLY_ID,
-            None,
-        )?)
+        .add_messages(messages)
         .add_attribute("action", "dex_withdrawal"))
-}
-
-pub fn handle_dex_withdrawal_reply(
-    deps: DepsMut,
-    _env: Env,
-    msg_result: SubMsgResult,
-) -> Result<Response, ContractError> {
-    match msg_result {
-        SubMsgResult::Ok(result) => {
-            Ok(Response::new().add_attribute("action", "withdrawal_reply_success"))
-        }
-        SubMsgResult::Err(err) => Ok(Response::new()
-            .add_attribute("action", "withdrawal_reply_error")
-            .add_attribute("error", err)),
-    }
 }
 
 pub fn handle_withdrawal_reply(
@@ -289,7 +281,7 @@ pub fn handle_withdrawal_reply(
     match msg_result {
         SubMsgResult::Ok(_result) => {
             let mut messages: Vec<CosmosMsg> = vec![];
-            let mut config = CONFIG.load(deps.storage)?;
+            let config = CONFIG.load(deps.storage)?;
             // we know there are no deposits here, so we can query the contract balance directly
             let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
 
@@ -307,12 +299,6 @@ pub fn handle_withdrawal_reply(
 
             // update the deposited value
             let prices: CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
-            let (value_withdrawn_0, value_withdrawn_1) =
-                get_token_value(prices.clone(), withdraw_amount_0, withdraw_amount_1)?;
-            let value_withdrawn = value_withdrawn_0.checked_add(value_withdrawn_1)?;
-
-            config.value_deposited = config.value_deposited.checked_sub(value_withdrawn)?;
-            CONFIG.save(deps.storage, &config)?;
 
             let tick_index = price_to_tick_index(prices.price_0_to_1)?;
 
