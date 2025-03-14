@@ -92,6 +92,9 @@ pub enum ContractError {
     #[error("Attempted deposit of invalid token amount")]
     InvalidTokenAmount,
 
+    #[error("Attempted mint of invalid token amount")]
+    InvalidTokenMintAmount,
+
     #[error("LP token already created")]
     TokenAlreadyCreated,
 

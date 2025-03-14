@@ -758,13 +758,37 @@ dependencies = [
  "cw-multi-test",
  "cw-storage-plus",
  "cw2",
- "neutron-std",
+ "neutron-std 5.0.0",
  "prost 0.12.6",
  "prost-types",
  "schemars",
  "serde",
  "serde_json",
  "test-case",
+ "thiserror 1.0.62",
+]
+
+[[package]]
+name = "neutron-std"
+version = "5.0.0"
+source = "git+https://github.com/neutron-org/neutron-std?rev=bfe745f7a7080f681dfef97d053932897cbe0f6e#bfe745f7a7080f681dfef97d053932897cbe0f6e"
+dependencies = [
+ "bech32 0.9.1",
+ "chrono",
+ "cosmos-sdk-proto",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "neutron-std-derive 0.20.1 (git+https://github.com/neutron-org/neutron-std?rev=bfe745f7a7080f681dfef97d053932897cbe0f6e)",
+ "prost 0.12.6",
+ "prost-types",
+ "protobuf",
+ "schemars",
+ "serde",
+ "serde-cw-value",
+ "serde-json-wasm",
+ "serde_json",
+ "speedate",
+ "tendermint-proto",
  "thiserror 1.0.62",
 ]
 
@@ -778,7 +802,7 @@ dependencies = [
  "cosmos-sdk-proto",
  "cosmwasm-schema",
  "cosmwasm-std",
- "neutron-std-derive",
+ "neutron-std-derive 0.20.1 (git+https://github.com/neutron-org/neutron-std?branch=temp%2Fpd_and_sod)",
  "prost 0.12.6",
  "prost-types",
  "protobuf",
@@ -796,6 +820,18 @@ dependencies = [
 name = "neutron-std-derive"
 version = "0.20.1"
 source = "git+https://github.com/neutron-org/neutron-std?branch=temp%2Fpd_and_sod#f474923efa4e7930d61a4c9609e3e80e458aa719"
+dependencies = [
+ "itertools 0.10.5",
+ "proc-macro2",
+ "prost-types",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "neutron-std-derive"
+version = "0.20.1"
+source = "git+https://github.com/neutron-org/neutron-std?rev=bfe745f7a7080f681dfef97d053932897cbe0f6e#bfe745f7a7080f681dfef97d053932897cbe0f6e"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -1230,7 +1266,7 @@ dependencies = [
  "cosmwasm-std",
  "cw-storage-plus",
  "cw2",
- "neutron-std",
+ "neutron-std 5.1.2",
  "prost 0.12.6",
  "prost-types",
  "schemars",

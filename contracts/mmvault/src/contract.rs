@@ -1,12 +1,13 @@
 use crate::error::{ContractError, ContractResult};
 use crate::execute::*;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload, CombinedPriceResponse};
 use crate::query::*;
-use crate::state::{Config, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, WITHDRAW_REPLY_ID};
+use crate::state::{Config, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, WITHDRAW_REPLY_ID, DEX_DEPOSIT_REPLY_ID_1, DEX_DEPOSIT_REPLY_ID_2};
 use crate::utils::*;
 use cosmwasm_std::{
     attr, entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128, Addr
 };
+use neutron_std::types::neutron::util::precdec::PrecDec;
 use cw2::set_contract_version;
 use prost::Message;
 use std::str::FromStr;
@@ -213,7 +214,31 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
             let amount = Uint128::from_str(&payload.amount).map_err(|_| ContractError::ParseError)?;
 
             handle_withdrawal_reply(deps, env, msg.result, amount, payload.sender)
-        }
+        },
+        DEX_DEPOSIT_REPLY_ID_1 => {
+            // Gracefully handle errors for the first reply
+            if let Err(err) = msg.result.clone().into_result() {
+                // Log the error but don't propagate it
+                return Ok(Response::new()
+                    .add_attribute("action", "dex_deposit_reply_1")
+                    .add_attribute("status", "error_handled")
+                    .add_attribute("error", format!("{:?}", err)))
+            }
+            // If successful, just return an empty response
+            Ok(Response::new()
+                .add_attribute("action", "dex_deposit_reply_1")
+                .add_attribute("status", "success"))
+        },
+        DEX_DEPOSIT_REPLY_ID_2 => {
+            // Call handle_dex_deposit_reply and handle its result
+            match handle_dex_deposit_reply(deps, env) {
+                Ok(response) => Ok(response),
+                Err(err) => {
+                    // If handle_dex_deposit_reply fails, return an error
+                    Err(err)
+                }
+            }
+        },
         id => Err(ContractError::UnknownReplyId { id }),
     }
 }
