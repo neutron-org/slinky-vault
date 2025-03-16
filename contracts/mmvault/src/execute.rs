@@ -1,12 +1,10 @@
 use crate::error::ContractError;
 use crate::msg::{CombinedPriceResponse, ConfigUpdateMsg, WithdrawPayload};
-use crate::state::{
-    CONFIG, CREATE_TOKEN_REPLY_ID, WITHDRAW_REPLY_ID,
-};
+use crate::state::{CONFIG, CREATE_TOKEN_REPLY_ID, WITHDRAW_REPLY_ID};
 use crate::utils::*;
 use cosmwasm_std::{
-    Addr, Binary, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg,
-    SubMsgResult, Uint128,
+    Addr, Binary, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult,
+    Uint128,
 };
 use neutron_std::types::neutron::dex::{DexQuerier, MsgWithdrawal, QueryAllUserDepositsResponse};
 use neutron_std::types::neutron::util::precdec::PrecDec;
@@ -67,8 +65,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
     let deposit_value = deposit_value_0.checked_add(deposit_value_1)?;
 
     // check if they exceed the cap
-    let exceeds_cap = deposit_value.checked_add(deposit_value_0)?
-        > PrecDec::from_atomics(config.deposit_cap, 0).unwrap();
+    let exceeds_cap = deposit_value > PrecDec::from_atomics(config.deposit_cap, 0).unwrap();
 
     // Only enforce deposit cap for non-whitelisted addresses
     if exceeds_cap && !config.whitelist.contains(&info.sender) {
@@ -223,7 +220,7 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
         balances[0].amount,
         balances[1].amount,
     )?;
-    deps.api.debug(&format!(">>>>>>messages: {:?}", messages));
+
     Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "dex_deposit"))
