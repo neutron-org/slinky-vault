@@ -82,9 +82,8 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         total_amount_1,
     )?;
 
-    if amount_to_mint.is_zero() {
-        return Err(ContractError::InvalidTokenAmount);
-    }
+    config.total_shares = amount_to_mint;
+    CONFIG.save(deps.storage, &config)?;
 
     // Mint LP tokens
     let mint_msg = MsgMint {
@@ -160,6 +159,9 @@ pub fn withdraw(
             balances[1].amount,
         )?;
         messages.extend(withdrawal_messages);
+
+        config.total_shares = config.total_shares.checked_sub(amount)?;
+        CONFIG.save(deps.storage, &config)?;
 
         return Ok(Response::new()
             .add_messages(messages)
@@ -446,6 +448,10 @@ pub fn update_config(
 
     if let Some(skew) = update.skew {
         config.skew = skew;
+    }
+
+    if let Some(imbalance) = update.imbalance {
+        config.imbalance = imbalance;
     }
 
     // Save updated config

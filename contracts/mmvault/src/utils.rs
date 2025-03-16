@@ -244,16 +244,27 @@ pub fn calculate_adjusted_tick_index(
     // -1.0 means token1 completely dominates
     // 1.0 means token0 completely dominates
     // 0.0 means perfectly balanced
-    let imbalance = value_token_0
-        .checked_sub(value_token_1)?
-        .checked_div(total_value)?;
-
-    // Convert the imbalance to a tick adjustment
-    // We need to convert PrecDec to f64 for the calculation
-    let imbalance_f64 = imbalance
-        .to_string()
-        .parse::<f64>()
-        .map_err(|_| ContractError::ConversionError)?;
+    let imbalance_f64 = if value_token_0 >= value_token_1 {
+        // Token0 dominates or equal - positive imbalance
+        let imbalance = value_token_0
+            .checked_sub(value_token_1)?
+            .checked_div(total_value)?;
+        
+        imbalance
+            .to_string()
+            .parse::<f64>()
+            .map_err(|_| ContractError::ConversionError)?
+    } else {
+        // Token1 dominates - negative imbalance
+        let imbalance = value_token_1
+            .checked_sub(value_token_0)?
+            .checked_div(total_value)?;
+        
+        -imbalance
+            .to_string()
+            .parse::<f64>()
+            .map_err(|_| ContractError::ConversionError)?
+    };
 
     // Calculate the adjustment linearly based on the imbalance
     let adjustment = (imbalance_f64 * max_adjustment as f64).round() as i64;
@@ -381,11 +392,11 @@ pub fn get_mint_amount(
 
     if config.total_shares == Uint128::zero() {
         // Initial deposit - set shares equal to deposit value
-        let total_shares =
+        total_shares =
             deposit_value_incoming.checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))?;
     } else {
         // Calculate proportional shares based on the ratio of deposit value to total value
-        let total_shares = deposit_value_incoming
+        total_shares = deposit_value_incoming
             .checked_mul(PrecDec::from_ratio(config.total_shares, 1u128))
             .map_err(|_| ContractError::ConversionError)?
             .checked_div(total_value_existing)
