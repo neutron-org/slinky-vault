@@ -59,7 +59,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
 
     // Get the value of the tokens in the contract
     let (deposit_value_0, deposit_value_1) =
-        get_token_value(prices.clone(), total_amount_0, total_amount_1)?;
+        get_token_value(prices.clone(), token0_deposited, token1_deposited)?;
 
     // calculate the total deposit value
     let deposit_value = deposit_value_0.checked_add(deposit_value_1)?;
