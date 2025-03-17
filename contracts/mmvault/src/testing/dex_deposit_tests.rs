@@ -1121,11 +1121,7 @@ fn test_dex_deposit_with_skew() {
     // Store config
     CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
-    // Execute dex_deposit as whitelisted user
-    let info = mock_info("owner", &[]);
-
     // let res: cosmwasm_std::Response = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
-    // Now simulate the reply handling
     let res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
 
     // Verify response
@@ -1256,16 +1252,6 @@ fn test_dex_deposit_execute_success() {
                             "Message {}: Expected MsgPlaceLimitOrder message, got: {}",
                             i, any_msg.type_url
                         );
-
-                        // We could decode the protobuf message here if needed
-                        // For example, to verify different parameters for each message:
-                        // let limit_order_msg: MsgPlaceLimitOrder = prost::Message::decode(any_msg.value.as_slice()).unwrap();
-                        //
-                        // if i == 0 {
-                        //     // Verify first message parameters
-                        // } else {
-                        //     // Verify second message parameters
-                        // }
                     }
                     _ => panic!("Message {}: Expected Any message for MsgPlaceLimitOrder", i),
                 }
