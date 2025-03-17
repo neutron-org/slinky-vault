@@ -1,6 +1,6 @@
 use crate::{
     error::{ContractError, ContractResult},
-    state::{FeeTierConfig, TokenData, Config},
+    state::{Config, FeeTierConfig, TokenData},
 };
 use cosmwasm_std::{Coin, Response, Uint128};
 use neutron_std::types::neutron::util::precdec::PrecDec;
@@ -152,9 +152,7 @@ pub enum ExecuteMsg {
     // create the LP token
     CreateToken {},
 
-    UpdateConfig {
-        update: ConfigUpdateMsg,
-    },
+    UpdateConfig { update: ConfigUpdateMsg },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]

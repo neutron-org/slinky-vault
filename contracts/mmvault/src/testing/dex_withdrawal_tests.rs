@@ -1,17 +1,15 @@
 use crate::contract::execute;
 use crate::error::ContractError;
 use crate::msg::{CombinedPriceResponse, ExecuteMsg};
-use crate::state::{
-    Config, FeeTier, FeeTierConfig, PairData, TokenData, CONFIG, SHARES_MULTIPLIER,
-};
+use crate::state::{Config, FeeTier, FeeTierConfig, PairData, TokenData, CONFIG};
 use crate::testing::mock_querier::{mock_dependencies_with_custom_querier, MockQuerier};
 use cosmwasm_std::testing::{mock_env, mock_info};
 use cosmwasm_std::Env;
-use cosmwasm_std::{Addr, Coin,Uint128};
-use neutron_std::types::neutron::dex::{DepositRecord, PairId, MsgWithdrawalResponse};
+use cosmwasm_std::{Addr, Coin, Uint128};
+use neutron_std::types::cosmos::base::v1beta1::Coin as NeutronCoin;
+use neutron_std::types::neutron::dex::{DepositRecord, MsgWithdrawalResponse, PairId};
 use neutron_std::types::neutron::util::precdec::PrecDec;
 use neutron_std::types::slinky::types::v1::CurrencyPair;
-use neutron_std::types::cosmos::base::v1beta1::Coin as NeutronCoin;
 use std::str::FromStr;
 
 // Helper function to create a test config
@@ -71,7 +69,7 @@ fn setup_test_config(env: Env) -> Config {
 // Helper function to setup mock querier
 fn setup_mock_querier() -> MockQuerier {
     let mut querier = MockQuerier::new();
-    
+
     // Setup price response
     let price_response = CombinedPriceResponse {
         token_0_price: PrecDec::from_str("1.0").unwrap(),
@@ -79,13 +77,13 @@ fn setup_mock_querier() -> MockQuerier {
         price_0_to_1: PrecDec::from_str("1.0").unwrap(),
     };
     querier.set_price_response(price_response);
-    
+
     // Setup empty deposits response
     querier.set_empty_deposits();
-    
+
     // Setup user deposits all response
     querier.set_user_deposits_all_response(vec![]);
-    
+
     querier // Return the querier
 }
 
@@ -94,19 +92,19 @@ fn test_dex_withdrawal_success() {
     // Setup
     let mut querier = setup_mock_querier();
     let env = mock_env();
-    
+
     // Set contract balance
     let contract_balance_0 = 1000000u128;
     let contract_balance_1 = 1000000u128;
-    
+
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(contract_balance_0, "token0"),
             Coin::new(contract_balance_1, "token1"),
         ],
     );
-    
+
     // Setup active deposits
     let deposits = vec![
         DepositRecord {
@@ -137,7 +135,7 @@ fn test_dex_withdrawal_success() {
         },
     ];
     querier.set_user_deposits_all_response(deposits);
-    
+
     // Setup withdrawal simulation response
     let withdrawal_sim_response = MsgWithdrawalResponse {
         reserve0_withdrawn: "250000".to_string(),
@@ -148,16 +146,16 @@ fn test_dex_withdrawal_success() {
         }],
     };
     querier.set_withdrawal_simulation_response(withdrawal_sim_response);
-    
+
     let mut deps = mock_dependencies_with_custom_querier(querier);
     let config = setup_test_config(env.clone());
-    
+
     // Store config
     CONFIG.save(deps.as_mut().storage, &config).unwrap();
-    
+
     // Execute dex withdrawal
     let info = mock_info("owner", &[]);
-    
+
     let res = execute(
         deps.as_mut(),
         env.clone(),
@@ -169,16 +167,16 @@ fn test_dex_withdrawal_success() {
     assert_eq!(res.attributes.len(), 1);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_withdrawal");
-    
+
     // Verify that withdrawal messages were created
     assert_eq!(res.messages.len(), 2); // One for each deposit
-    
+
     // Check that the messages are withdrawal messages
     for msg in res.messages.iter() {
         match &msg.msg {
             cosmwasm_std::CosmosMsg::Any(any_msg) => {
                 assert_eq!(any_msg.type_url, "/neutron.dex.MsgWithdrawal");
-            },
+            }
             _ => panic!("Expected Any message with MsgWithdrawal type_url"),
         }
     }
@@ -189,28 +187,28 @@ fn test_dex_withdrawal_no_active_deposits() {
     // Setup
     let mut querier = setup_mock_querier();
     let env = mock_env();
-    
+
     // Set contract balance
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
         ],
     );
-    
+
     // Setup empty deposits (no active deposits)
     querier.set_user_deposits_all_response(vec![]);
-    
+
     let mut deps = mock_dependencies_with_custom_querier(querier);
     let config = setup_test_config(env.clone());
-    
+
     // Store config
     CONFIG.save(deps.as_mut().storage, &config).unwrap();
-    
+
     // Execute dex withdrawal
     let info = mock_info("owner", &[]);
-    
+
     let res = execute(
         deps.as_mut(),
         env.clone(),
@@ -218,12 +216,12 @@ fn test_dex_withdrawal_no_active_deposits() {
         ExecuteMsg::DexWithdrawal {},
     )
     .unwrap();
-    
+
     // Verify response
     assert_eq!(res.attributes.len(), 1);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_withdrawal");
-    
+
     // Verify that no withdrawal messages were created (no active deposits)
     assert_eq!(res.messages.len(), 0);
 }
@@ -234,14 +232,14 @@ fn test_dex_withdrawal_unauthorized() {
     let mut deps = mock_dependencies_with_custom_querier(setup_mock_querier());
     let env = mock_env();
     let mut config = setup_test_config(env.clone());
-    
+
     // Set whitelist to only include specific addresses
     config.whitelist = vec![Addr::unchecked("owner")];
     CONFIG.save(deps.as_mut().storage, &config).unwrap();
-    
+
     // Execute dex withdrawal with unauthorized user
     let info = mock_info("unauthorized_user", &[]);
-    
+
     let err = execute(
         deps.as_mut(),
         env.clone(),
@@ -249,7 +247,7 @@ fn test_dex_withdrawal_unauthorized() {
         ExecuteMsg::DexWithdrawal {},
     )
     .unwrap_err();
-    
+
     // Verify error
     assert_eq!(err, ContractError::Unauthorized {});
 }
@@ -260,12 +258,12 @@ fn test_dex_withdrawal_with_funds() {
     let mut deps = mock_dependencies_with_custom_querier(setup_mock_querier());
     let env = mock_env();
     let config = setup_test_config(env.clone());
-    
+
     CONFIG.save(deps.as_mut().storage, &config).unwrap();
-    
+
     // Execute dex withdrawal with funds (should fail)
     let info = mock_info("owner", &[Coin::new(100u128, "token0")]);
-    
+
     let err = execute(
         deps.as_mut(),
         env.clone(),
@@ -273,7 +271,7 @@ fn test_dex_withdrawal_with_funds() {
         ExecuteMsg::DexWithdrawal {},
     )
     .unwrap_err();
-    
+
     // Verify error
     assert_eq!(err, ContractError::FundsNotAllowed);
 }
@@ -283,16 +281,16 @@ fn test_dex_withdrawal_multiple_deposits_different_fees() {
     // Setup
     let mut querier = setup_mock_querier();
     let env = mock_env();
-    
+
     // Set contract balance
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
         ],
     );
-    
+
     // Setup active deposits with different fee tiers
     let deposits = vec![
         DepositRecord {
@@ -336,7 +334,7 @@ fn test_dex_withdrawal_multiple_deposits_different_fees() {
         },
     ];
     querier.set_user_deposits_all_response(deposits);
-    
+
     // Setup withdrawal simulation response
     let withdrawal_sim_response = MsgWithdrawalResponse {
         reserve0_withdrawn: "100000".to_string(),
@@ -347,16 +345,16 @@ fn test_dex_withdrawal_multiple_deposits_different_fees() {
         }],
     };
     querier.set_withdrawal_simulation_response(withdrawal_sim_response);
-    
+
     let mut deps = mock_dependencies_with_custom_querier(querier);
     let config = setup_test_config(env.clone());
-    
+
     // Store config
     CONFIG.save(deps.as_mut().storage, &config).unwrap();
-    
+
     // Execute dex withdrawal
     let info = mock_info("owner", &[]);
-    
+
     let res = execute(
         deps.as_mut(),
         env.clone(),
@@ -364,22 +362,22 @@ fn test_dex_withdrawal_multiple_deposits_different_fees() {
         ExecuteMsg::DexWithdrawal {},
     )
     .unwrap();
-    
+
     // Verify response
     assert_eq!(res.attributes.len(), 1);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_withdrawal");
-    
+
     // Verify that withdrawal messages were created - one for each deposit
     assert_eq!(res.messages.len(), 3);
-    
+
     // Check that the messages are withdrawal messages
     for msg in res.messages.iter() {
         match &msg.msg {
             cosmwasm_std::CosmosMsg::Any(any_msg) => {
                 assert_eq!(any_msg.type_url, "/neutron.dex.MsgWithdrawal");
-            },
+            }
             _ => panic!("Expected Any message with MsgWithdrawal type_url"),
         }
     }
-} 
+}

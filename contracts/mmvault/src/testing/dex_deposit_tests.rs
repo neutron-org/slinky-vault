@@ -94,7 +94,7 @@ fn test_dex_deposit_success_even_values_1_fee_tier() {
 
     // Set up contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -120,7 +120,7 @@ fn test_dex_deposit_success_even_values_1_fee_tier() {
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
     // Verify that deposit messages were created
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 
     // Verify the first message is a MsgDeposit
     let first_msg = &res.messages[0];
@@ -162,7 +162,7 @@ fn test_dex_deposit_success_even_values_1_fee_tier() {
 
             // Verify deposit options
             if !deposit_msg.options.is_empty() {
-                assert_eq!(deposit_msg.options[0].disable_autoswap, false);
+                assert!(!deposit_msg.options[0].disable_autoswap);
             }
         } else {
             panic!("Expected Any message, got something else");
@@ -178,7 +178,7 @@ fn test_dex_deposit_success_even_values_2_fee_tiers() {
 
     // Set up contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -210,7 +210,7 @@ fn test_dex_deposit_success_even_values_2_fee_tiers() {
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
     // Verify that deposit messages were created
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 
     // Verify the first message is a MsgDeposit
     let first_msg = &res.messages[0];
@@ -252,7 +252,7 @@ fn test_dex_deposit_success_even_values_2_fee_tiers() {
 
             // Verify deposit options
             if !deposit_msg.options.is_empty() {
-                assert_eq!(deposit_msg.options[0].disable_autoswap, false);
+                assert!(!deposit_msg.options[0].disable_autoswap);
             }
         } else {
             panic!("Expected Any message, got something else");
@@ -267,7 +267,7 @@ fn test_dex_deposit_success_even_values_3_fee_tiers() {
 
     // Set up contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -290,7 +290,7 @@ fn test_dex_deposit_success_even_values_3_fee_tiers() {
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
     // Verify that deposit messages were created
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 
     // Verify the first message is a MsgDeposit
     let first_msg = &res.messages[0];
@@ -332,7 +332,7 @@ fn test_dex_deposit_success_even_values_3_fee_tiers() {
 
             // Verify deposit options
             if !deposit_msg.options.is_empty() {
-                assert_eq!(deposit_msg.options[0].disable_autoswap, false);
+                assert!(!deposit_msg.options[0].disable_autoswap);
             }
         } else {
             panic!("Expected Any message, got something else");
@@ -348,7 +348,7 @@ fn test_dex_deposit_success_even_values_4_fee_tiers() {
 
     // Set up contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -388,7 +388,7 @@ fn test_dex_deposit_success_even_values_4_fee_tiers() {
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
     // Verify that deposit messages were created
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 
     // Verify the first message is a MsgDeposit
     let first_msg = &res.messages[0];
@@ -430,7 +430,7 @@ fn test_dex_deposit_success_even_values_4_fee_tiers() {
 
             // Verify deposit options
             if !deposit_msg.options.is_empty() {
-                assert_eq!(deposit_msg.options[0].disable_autoswap, false);
+                assert!(!deposit_msg.options[0].disable_autoswap);
             }
         } else {
             panic!("Expected Any message, got something else");
@@ -446,7 +446,7 @@ fn test_dex_deposit_success_even_values_zero_first_percentage() {
 
     // Set up contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -486,7 +486,7 @@ fn test_dex_deposit_success_even_values_zero_first_percentage() {
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
     // Verify that deposit messages were created
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 
     // Verify the first message is a MsgDeposit
     let first_msg = &res.messages[0];
@@ -530,7 +530,7 @@ fn test_dex_deposit_success_even_values_zero_first_percentage() {
 
             // Verify deposit options
             if !deposit_msg.options.is_empty() {
-                assert_eq!(deposit_msg.options[0].disable_autoswap, false);
+                assert!(!deposit_msg.options[0].disable_autoswap);
             }
         } else {
             panic!("Expected Any message, got something else");
@@ -545,7 +545,7 @@ fn test_dex_deposit_success_even_values_zero_percentage() {
 
     // Set up contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -572,7 +572,7 @@ fn test_dex_deposit_success_even_values_zero_percentage() {
             percentage: 30,
         },
     ];
-    let iteration_tiers = vec![
+    let iteration_tiers = [
         FeeTier {
             fee: 5,
             percentage: 30,
@@ -599,7 +599,7 @@ fn test_dex_deposit_success_even_values_zero_percentage() {
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
     // Verify that deposit messages were created
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 
     // Verify the first message is a MsgDeposit
     let first_msg = &res.messages[0];
@@ -640,7 +640,7 @@ fn test_dex_deposit_success_even_values_zero_percentage() {
 
             // Verify deposit options
             if !deposit_msg.options.is_empty() {
-                assert_eq!(deposit_msg.options[0].disable_autoswap, false);
+                assert!(!deposit_msg.options[0].disable_autoswap);
             }
         } else {
             panic!("Expected Any message, got something else");
@@ -655,7 +655,7 @@ fn test_dex_deposit_success_even_values_zero_multiple_percentages() {
 
     // Set up contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -682,7 +682,7 @@ fn test_dex_deposit_success_even_values_zero_multiple_percentages() {
             percentage: 0,
         },
     ];
-    let iteration_tiers = vec![FeeTier {
+    let iteration_tiers = [FeeTier {
         fee: 150,
         percentage: 100,
     }];
@@ -699,7 +699,7 @@ fn test_dex_deposit_success_even_values_zero_multiple_percentages() {
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
     // Verify that deposit messages were created
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 
     // Verify the first message is a MsgDeposit
     let first_msg = &res.messages[0];
@@ -740,7 +740,7 @@ fn test_dex_deposit_success_even_values_zero_multiple_percentages() {
 
             // Verify deposit options
             if !deposit_msg.options.is_empty() {
-                assert_eq!(deposit_msg.options[0].disable_autoswap, false);
+                assert!(!deposit_msg.options[0].disable_autoswap);
             }
         } else {
             panic!("Expected Any message, got something else");
@@ -757,7 +757,7 @@ fn test_dex_deposit_success_uneven_prices() {
     let token1_amount = 100000000u128;
     // Set up contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(token0_amount, "token0"),
             Coin::new(token1_amount, "token1"),
@@ -809,7 +809,7 @@ fn test_dex_deposit_success_uneven_prices() {
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
     // Verify that deposit messages were created
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 
     // Verify the first message is a MsgDeposit
     let first_msg = &res.messages[0];
@@ -842,7 +842,7 @@ fn test_dex_deposit_success_uneven_prices() {
     let imabalnce = (token_0_value - token_1_value)
         .checked_mul(PrecDec::percent(config.imbalance))
         .unwrap();
-    let additional_amount_0 = imbalance / price_response.token_0_price.clone(); // checking maually this should be 25000000u128
+    let additional_amount_0 = imbalance / price_response.token_0_price; // checking maually this should be 25000000u128
     let final_amount_0 = PrecDec::from_atomics(computed_amount_0, 0).unwrap() + additional_amount_0; // this should be 35000000u128
     let final_amount_1 = PrecDec::from_atomics(computed_amount_1, 0).unwrap(); // this should be 10000000u128
     allocations.push(Allocation {
@@ -859,9 +859,9 @@ fn test_dex_deposit_success_uneven_prices() {
     // remaining_token_1_amount = 90000000u128
     // tick index 1, token0 allocation @ 30% = 65000000 * 20 / 90 = 14444444u128
     // tick index 1  token1 20% = 90000000 * 20 / 90 = 20000000u128
-    let mut remaining_token_0_amount =
+    let remaining_token_0_amount =
         PrecDec::from_atomics(token0_amount, 0).unwrap() - final_amount_0;
-    let mut remaining_token_1_amount =
+    let remaining_token_1_amount =
         PrecDec::from_atomics(token1_amount, 0).unwrap() - final_amount_1;
     let remaining_percentage = 90;
     let mut token_0_allocation = remaining_token_0_amount.to_uint_floor().multiply_ratio(
@@ -905,7 +905,7 @@ fn test_dex_deposit_success_uneven_prices() {
     // remaining_token_1_amount = 90000000u128 @ 40% = 90000000 * 40 / 100 = 36000000u128
     // tick index 1, token0 allocation @ 30% = 65000000 * 30 / 90 = 21666666u128
     // tick index 1  token1 30% = 90000000 * 30 / 90 = 30000000u128
-   
+
     token_0_allocation = remaining_token_0_amount.to_uint_floor().multiply_ratio(
         config.fee_tier_config.fee_tiers[3].percentage as u128,
         remaining_percentage as u128,
@@ -920,7 +920,7 @@ fn test_dex_deposit_success_uneven_prices() {
         amount_0: PrecDec::from_atomics(token_0_allocation, 0).unwrap(),
         amount_1: PrecDec::from_atomics(token_1_allocation, 0).unwrap(),
     });
-    
+
     for (i, msg) in res.messages.iter().enumerate() {
         if let cosmwasm_std::CosmosMsg::Any(any_msg) = &msg.msg {
             assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
@@ -940,22 +940,25 @@ fn test_dex_deposit_success_uneven_prices() {
             assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
             assert_eq!(deposit_msg.token_a, "token0");
             assert_eq!(deposit_msg.token_b, "token1");
-            
+
             // For the last fee tier, use the actual value from the message due to rounding differences
             if i == 3 {
                 // The last allocation has a rounding difference, so we'll just check that it's close
                 let actual_token0 = deposit_msg.amounts_a[0].parse::<u128>().unwrap();
                 let expected_token0 = expected_token0_amount.parse::<u128>().unwrap();
-                assert!(actual_token0.abs_diff(expected_token0) <= 2, 
-                    "Token0 amount difference too large: expected {} but got {}", 
-                    expected_token0, actual_token0);
+                assert!(
+                    actual_token0.abs_diff(expected_token0) <= 2,
+                    "Token0 amount difference too large: expected {} but got {}",
+                    expected_token0,
+                    actual_token0
+                );
             } else {
                 assert_eq!(
                     deposit_msg.amounts_a,
                     vec![expected_token0_amount.to_string()]
                 );
             }
-            
+
             assert_eq!(
                 deposit_msg.amounts_b,
                 vec![expected_token1_amount.to_string()]
@@ -965,7 +968,7 @@ fn test_dex_deposit_success_uneven_prices() {
 
             // Verify deposit options
             if !deposit_msg.options.is_empty() {
-                assert_eq!(deposit_msg.options[0].disable_autoswap, false);
+                assert!(!deposit_msg.options[0].disable_autoswap);
             }
         } else {
             panic!("Expected Any message, got something else");
@@ -1037,7 +1040,7 @@ fn test_dex_deposit_active_deposits_exist() {
 
     // Set up contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(500000u128, "token0"),
             Coin::new(500000u128, "token1"),
@@ -1082,7 +1085,7 @@ fn test_dex_deposit_with_skew() {
 
     // Set up contract balances with imbalance
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(800000u128, "token0"),
             Coin::new(200000u128, "token1"),
@@ -1109,18 +1112,18 @@ fn test_dex_deposit_with_skew() {
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
     // Verify that deposit messages were created
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 }
 
 #[test]
 fn test_dex_deposit_staleness_check() {
     // Setup
     let mut querier = setup_mock_querier();
-    let mut env = mock_env();
+    let env = mock_env();
 
     // Set up contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(500000u128, "token0"),
             Coin::new(500000u128, "token1"),

@@ -7,7 +7,7 @@ use crate::state::{
 use crate::testing::mock_querier::{mock_dependencies_with_custom_querier, MockQuerier};
 use cosmwasm_std::testing::{mock_env, mock_info};
 use cosmwasm_std::Env;
-use cosmwasm_std::{coins, Addr, Coin, Uint128};
+use cosmwasm_std::{Addr, Coin, Uint128};
 use neutron_std::types::neutron::util::precdec::PrecDec;
 use neutron_std::types::slinky::types::v1::CurrencyPair;
 use std::str::FromStr;
@@ -95,7 +95,7 @@ fn test_deposit_success() {
 
     // Set up contract balances - IMPORTANT: set initial balances to 0
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![Coin::new(0u128, "token0"), Coin::new(0u128, "token1")],
     );
 
@@ -120,7 +120,7 @@ fn test_deposit_success() {
 
     // Update the contract balance to reflect what it would be AFTER the deposit
     deps.querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(deposit_amount_0, "token0"),
             Coin::new(deposit_amount_1, "token1"),
@@ -145,7 +145,7 @@ fn test_deposit_success() {
     assert_eq!(res.attributes[2].key, "minted_amount");
 
     // Verify that LP tokens were minted
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 
     // Verify config was updated
     let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
@@ -258,7 +258,7 @@ fn test_deposit_exceeds_cap() {
 
     // Update contract balance to reflect what it would be after the deposit
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -294,7 +294,7 @@ fn test_deposit_under_cap() {
     );
     //update contract balance to reflect what it would be after the deposit
     deps.querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -317,14 +317,11 @@ fn test_deposit_under_cap() {
 
     // Second deposit - this should fail because we've reached the cap
     // The deposit cap is 2000000, and we've already deposited 2000000 worth of tokens. 1 more token should not be allowed
-    let info = mock_info(
-        "user",
-        &[Coin::new(1u128, "token0")],
-    );
+    let info = mock_info("user", &[Coin::new(1u128, "token0")]);
 
     // Update contract balance for second deposit
     deps.querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000001u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -360,7 +357,7 @@ fn test_deposit_whitelist_exceeds_cap() {
     );
     //update contract balance to reflect what it would be after the deposit
     deps.querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(1000000u128, "token0"),
             Coin::new(1000000u128, "token1"),
@@ -387,7 +384,7 @@ fn test_deposit_single_token() {
     let info = mock_info("user1", &[Coin::new(500000u128, "token0")]);
     //update contract balance to reflect what it would be after the deposit
     deps.querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![Coin::new(500000u128, "token0")],
     );
 
@@ -398,7 +395,7 @@ fn test_deposit_single_token() {
     assert_eq!(res.attributes[0].value, "deposit");
 
     // Verify that LP tokens were minted
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 }
 
 #[test]
@@ -431,7 +428,7 @@ fn test_deposit_different_token_prices() {
     );
     //update contract balance to reflect what it would be after the deposit
     deps.querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(500000u128, "token0"),
             Coin::new(500000u128, "token1"),
@@ -444,7 +441,7 @@ fn test_deposit_different_token_prices() {
     assert_eq!(res.attributes[0].value, "deposit");
 
     // Verify that LP tokens were minted
-    assert!(res.messages.len() > 0);
+    assert!(!res.messages.is_empty());
 
     // The amount minted should reflect the different token values
     let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
@@ -469,7 +466,7 @@ fn test_deposit_multiple_times() {
 
     // Set up initial contract balances
     querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![Coin::new(0u128, "token0"), Coin::new(0u128, "token1")],
     );
 
@@ -490,7 +487,7 @@ fn test_deposit_multiple_times() {
 
     // Update contract balance for first deposit
     deps.querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(input_amount, "token0"),
             Coin::new(input_amount, "token1"),
@@ -516,7 +513,7 @@ fn test_deposit_multiple_times() {
 
     // Update contract balance for second deposit - IMPORTANT: this is cumulative
     deps.querier.set_contract_balance(
-        &env.contract.address.to_string(),
+        env.contract.address.as_ref(),
         vec![
             Coin::new(input_amount.checked_mul(2u128).unwrap(), "token0"), // 500000 (first) + 500000 (second)
             Coin::new(input_amount.checked_mul(2u128).unwrap(), "token1"), // 500000 (first) + 500000 (second)

@@ -475,45 +475,59 @@ pub fn get_deposit_messages(
     }
 
     // Calculate remaining amounts after first deposit
-    let mut remaining_amount0 = token_0_balance.checked_sub(deposit_data.amount0).unwrap_or(Uint128::zero());
-    let mut remaining_amount1 = token_1_balance.checked_sub(deposit_data.amount1).unwrap_or(Uint128::zero());
-    
+    let remaining_amount0 = token_0_balance
+        .checked_sub(deposit_data.amount0)
+        .unwrap_or(Uint128::zero());
+    let remaining_amount1 = token_1_balance
+        .checked_sub(deposit_data.amount1)
+        .unwrap_or(Uint128::zero());
+
     // If no remaining tokens or no additional fee tiers, return early
-    if (remaining_amount0.is_zero() && remaining_amount1.is_zero()) || config.fee_tier_config.fee_tiers.len() <= 1 {
+    if (remaining_amount0.is_zero() && remaining_amount1.is_zero())
+        || config.fee_tier_config.fee_tiers.len() <= 1
+    {
         return Ok(messages);
     }
-    
+
     // Calculate sum of remaining percentages
-    let remaining_percentages: u64 = config.fee_tier_config.fee_tiers.iter()
+    let remaining_percentages: u64 = config
+        .fee_tier_config
+        .fee_tiers
+        .iter()
         .skip(1)
         .map(|tier| tier.percentage)
         .sum();
-    
+
     if remaining_percentages == 0 {
         return Ok(messages);
     }
-    
+
     // Process remaining fee tiers
-    let remaining_tiers = config.fee_tier_config.fee_tiers.iter().skip(1).collect::<Vec<_>>();
-    
+    let remaining_tiers = config
+        .fee_tier_config
+        .fee_tiers
+        .iter()
+        .skip(1)
+        .collect::<Vec<_>>();
+
     // Calculate the total amount to distribute for each token
     let total_amount0_to_distribute = remaining_amount0;
     let total_amount1_to_distribute = remaining_amount1;
-    
+
     let mut distributed_amount0 = Uint128::zero();
     let mut distributed_amount1 = Uint128::zero();
-    
+
     for (i, fee_tier) in remaining_tiers.iter().enumerate() {
         // For the last tier, use all remaining tokens
         if i == remaining_tiers.len() - 1 {
             let amount_0 = total_amount0_to_distribute - distributed_amount0;
             let amount_1 = total_amount1_to_distribute - distributed_amount1;
-            
+
             // Skip if both amounts are zero
             if amount_0.is_zero() && amount_1.is_zero() {
                 continue;
             }
-            
+
             // Create deposit message
             let dex_msg = Into::<CosmosMsg>::into(MsgDeposit {
                 creator: env.contract.address.to_string(),
@@ -533,24 +547,20 @@ pub fn get_deposit_messages(
             messages.push(dex_msg);
         } else {
             // Calculate exact amount based on percentage
-            let amount_0 = total_amount0_to_distribute.multiply_ratio(
-                fee_tier.percentage as u128, 
-                remaining_percentages as u128
-            );
-            let amount_1 = total_amount1_to_distribute.multiply_ratio(
-                fee_tier.percentage as u128, 
-                remaining_percentages as u128
-            );
-            
+            let amount_0 = total_amount0_to_distribute
+                .multiply_ratio(fee_tier.percentage as u128, remaining_percentages as u128);
+            let amount_1 = total_amount1_to_distribute
+                .multiply_ratio(fee_tier.percentage as u128, remaining_percentages as u128);
+
             // Skip if both amounts are zero
             if amount_0.is_zero() && amount_1.is_zero() {
                 continue;
             }
-            
+
             // Track distributed amounts
             distributed_amount0 += amount_0;
             distributed_amount1 += amount_1;
-            
+
             // Create deposit message
             let dex_msg = Into::<CosmosMsg>::into(MsgDeposit {
                 creator: env.contract.address.to_string(),

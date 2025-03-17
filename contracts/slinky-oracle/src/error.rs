@@ -109,7 +109,7 @@ pub enum ContractError {
 
     #[error("No reply data")]
     InvalidConfig { reason: String },
-    
+
     #[error("Timestamp is stale")]
     StaleTimestamp,
 
