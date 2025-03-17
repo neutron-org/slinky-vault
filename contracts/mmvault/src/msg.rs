@@ -1,6 +1,6 @@
 use crate::{
     error::{ContractError, ContractResult},
-    state::{FeeTierConfig, TokenData, Config},
+    state::{Config, FeeTierConfig, TokenData},
 };
 use cosmwasm_std::{Coin, Response, Uint128};
 use neutron_std::types::neutron::util::precdec::PrecDec;
@@ -50,6 +50,7 @@ pub struct ConfigUpdateMsg {
     pub paused: Option<bool>,
     pub skew: Option<bool>,
     pub imbalance: Option<u32>,
+    pub oracle_contract: Option<String>,
 }
 
 impl InstantiateMsg {
@@ -92,9 +93,9 @@ impl InstantiateMsg {
         }
 
         // Ensure total percentage is less than 100%
-        if total_percentage > 100 {
+        if total_percentage != 100 {
             return Err(ContractError::InvalidFeeTier {
-                reason: "Total fee tier percentages must be <= 100%".to_string(),
+                reason: "Total fee tier percentages must be == 100%".to_string(),
             });
         }
 
@@ -152,9 +153,7 @@ pub enum ExecuteMsg {
     // create the LP token
     CreateToken {},
 
-    UpdateConfig {
-        update: ConfigUpdateMsg,
-    },
+    UpdateConfig { update: ConfigUpdateMsg },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]

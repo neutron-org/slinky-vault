@@ -10,7 +10,6 @@ pub const DEX_DEPOSIT_REPLY_ID_1: u64 = 3;
 pub const DEX_DEPOSIT_REPLY_ID_2: u64 = 4;
 pub const SHARES_MULTIPLIER: u64 = 1000000000;
 
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct TokenData {

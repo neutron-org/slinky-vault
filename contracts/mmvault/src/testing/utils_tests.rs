@@ -1,11 +1,9 @@
 use std::str::FromStr;
 
-use crate::msg::{
-    CombinedPriceResponse, DepositResult
-};
+use crate::msg::{CombinedPriceResponse, DepositResult};
 use test_case::test_case;
 
-use crate::utils::{get_deposit_data, price_to_tick_index, get_deposit_messages};
+use crate::utils::{get_deposit_data, get_deposit_messages, price_to_tick_index};
 use cosmwasm_std::Uint128;
 use neutron_std::types::neutron::util::precdec::PrecDec;
 
@@ -48,7 +46,7 @@ use neutron_std::types::neutron::util::precdec::PrecDec;
 #[test_case(10000000, 0, 0, 100, "1", "1", "1", 10, true, 50u32 => DepositResult { amount0: Uint128::new(6000000), amount1: Uint128::new(0), tick_index: 99, fee: 100 }; "test skew sequence -1")]
 #[test_case(9000000, 1000000, 0, 100, "1", "1", "1", 10, true, 50u32=> DepositResult { amount0: Uint128::new(4900000), amount1: Uint128::new(100000), tick_index: 79, fee: 100 }; "test skew sequence -2")]
 #[test_case(8000000, 2000000, 0, 100, "1", "1", "1", 10, true, 50u32 => DepositResult { amount0: Uint128::new(3800000), amount1: Uint128::new(200000), tick_index: 59, fee: 100 }; "test skew sequence -3")]
-#[test_case(7000000, 3000000, 0, 100, "1", "1", "1", 10, true, 50u32 => DepositResult { amount0: Uint128::new(2700000), amount1: Uint128::new(300000), tick_index: 40, fee: 100 }; "test skew sequence -4")] 
+#[test_case(7000000, 3000000, 0, 100, "1", "1", "1", 10, true, 50u32 => DepositResult { amount0: Uint128::new(2700000), amount1: Uint128::new(300000), tick_index: 40, fee: 100 }; "test skew sequence -4")]
 #[test_case(6000000, 4000000, 0, 100, "1", "1", "1", 10, true, 50u32 => DepositResult { amount0: Uint128::new(1600000), amount1: Uint128::new(400000), tick_index: 20, fee: 100 }; "test skew sequence -5")]
 #[test_case(5000000, 5000000, 0, 100, "1", "1", "1", 10, true, 50u32 => DepositResult { amount0: Uint128::new(500000), amount1: Uint128::new(500000), tick_index: 0, fee: 100 }; "test skew sequence -6")]
 fn test_get_deposit_data(
@@ -61,7 +59,7 @@ fn test_get_deposit_data(
     price_0_to_1: &str,
     base_deposit_percentage: u64,
     skew: bool,
-    imbalance: u32
+    imbalance: u32,
 ) -> DepositResult {
     let prices = CombinedPriceResponse {
         token_0_price: PrecDec::from_str(token_0_price).unwrap(),
@@ -84,7 +82,8 @@ fn test_get_deposit_data(
         base_deposit_percentage,
         skew,
         imbalance,
-    ).unwrap();
+    )
+    .unwrap();
 
     println!("Result: {:?}", result);
     result
@@ -115,34 +114,44 @@ fn test_price_to_tick_index_properties() {
     // Test symmetry around 1.0
     let price_above = PrecDec::from_str("2.0").unwrap();
     let price_below = PrecDec::from_str("0.5").unwrap();
-    
+
     let tick_above = price_to_tick_index(price_above).unwrap();
     let tick_below = price_to_tick_index(price_below).unwrap();
-    
-    assert_eq!(tick_above.abs(), tick_below.abs(), 
-        "Tick indices should be symmetric around 1.0");
+
+    assert_eq!(
+        tick_above.abs(),
+        tick_below.abs(),
+        "Tick indices should be symmetric around 1.0"
+    );
 
     // Test monotonicity
     let price1 = PrecDec::from_str("1.1").unwrap();
     let price2 = PrecDec::from_str("1.2").unwrap();
-    
+
     let tick1 = price_to_tick_index(price1).unwrap();
     let tick2 = price_to_tick_index(price2).unwrap();
-    
-    assert!(tick1 > tick2, 
-        "Tick index should decrease as price increases above 1.0");
+
+    assert!(
+        tick1 > tick2,
+        "Tick index should decrease as price increases above 1.0"
+    );
 
     // Test precision handling
     let price_precise1 = PrecDec::from_str("0.000000000000000001").unwrap();
     let price_precise2 = PrecDec::from_str("0.000000000000000002").unwrap();
-    
+
     let tick_precise1 = price_to_tick_index(price_precise1).unwrap();
     let tick_precise2 = price_to_tick_index(price_precise2).unwrap();
-    
-    println!("tick_precise1: {}, tick_precise2: {}", tick_precise1, tick_precise2);
-    
-    assert!(tick_precise1 >= tick_precise2, 
-        "Should handle small price differences correctly");
+
+    println!(
+        "tick_precise1: {}, tick_precise2: {}",
+        tick_precise1, tick_precise2
+    );
+
+    assert!(
+        tick_precise1 >= tick_precise2,
+        "Should handle small price differences correctly"
+    );
 }
 
 #[test]
@@ -158,23 +167,21 @@ fn test_price_to_tick_index_special_values() {
     for (price_str, expected_tick) in test_powers {
         let price = PrecDec::from_str(price_str).unwrap();
         let tick = price_to_tick_index(price).unwrap();
-        assert_eq!(tick, expected_tick, 
-            "Failed for power of 10: {}", price_str);
+        assert_eq!(tick, expected_tick, "Failed for power of 10: {}", price_str);
     }
 
     // Test common price ratios
     let test_ratios = vec![
-        ("1.5", -4055),    // 3:2 ratio
-        ("2.0", -6932),    // 2:1 ratio
-        ("3.0", -10987),   // 3:1 ratio
-        ("4.0", -13864),   // 4:1 ratio
+        ("1.5", -4055),  // 3:2 ratio
+        ("2.0", -6932),  // 2:1 ratio
+        ("3.0", -10987), // 3:1 ratio
+        ("4.0", -13864), // 4:1 ratio
     ];
 
     for (price_str, expected_tick) in test_ratios {
         let price = PrecDec::from_str(price_str).unwrap();
         let tick = price_to_tick_index(price).unwrap();
-        assert_eq!(tick, expected_tick, 
-            "Failed for price ratio: {}", price_str);
+        assert_eq!(tick, expected_tick, "Failed for price ratio: {}", price_str);
     }
 }
 
@@ -221,9 +228,18 @@ mod tests {
             deposit_cap: Uint128::new(1000000),
             fee_tier_config: FeeTierConfig {
                 fee_tiers: vec![
-                    FeeTier { fee: 100, percentage: 60 },
-                    FeeTier { fee: 500, percentage: 30 },
-                    FeeTier { fee: 3000, percentage: 10 },
+                    FeeTier {
+                        fee: 100,
+                        percentage: 60,
+                    },
+                    FeeTier {
+                        fee: 500,
+                        percentage: 30,
+                    },
+                    FeeTier {
+                        fee: 3000,
+                        percentage: 10,
+                    },
                 ],
             },
             last_executed: 0,
@@ -250,11 +266,11 @@ mod tests {
         let config = setup_test_config();
         let prices = setup_test_prices();
         let tick_index = 0;
-        
+
         // Test with zero balances
         let token0_balance = Uint128::zero();
         let token1_balance = Uint128::zero();
-        
+
         let messages = get_deposit_messages(
             &env,
             config,
@@ -262,8 +278,9 @@ mod tests {
             prices,
             token0_balance,
             token1_balance,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Should return an empty vector since there are no tokens to deposit
         assert_eq!(messages.len(), 0);
     }
@@ -274,21 +291,22 @@ mod tests {
         let mut config = setup_test_config();
         let prices = setup_test_prices();
         let tick_index = 0;
-        
+
         // Test with equal balances
         let token0_balance = Uint128::new(1000000);
         let token1_balance = Uint128::new(1000000);
-        
+
         // Make sure we have at least one fee tier in the config
         if config.fee_tier_config.fee_tiers.is_empty() {
-            config.fee_tier_config.fee_tiers = vec![
-                FeeTier { fee: 100, percentage: 100 }
-            ];
+            config.fee_tier_config.fee_tiers = vec![FeeTier {
+                fee: 100,
+                percentage: 100,
+            }];
         }
-        
+
         // Print debug information
         println!("Fee tiers: {:?}", config.fee_tier_config.fee_tiers);
-        
+
         let messages = get_deposit_messages(
             &env,
             config.clone(),
@@ -296,28 +314,32 @@ mod tests {
             prices.clone(),
             token0_balance,
             token1_balance,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Print more debug information
         println!("Number of messages: {}", messages.len());
-        
+
         // Should return at least one message
-        assert!(!messages.is_empty(), "Expected at least one deposit message");
-        
+        assert!(
+            !messages.is_empty(),
+            "Expected at least one deposit message"
+        );
+
         // Verify the first message is for the first fee tier
         if let CosmosMsg::Any(any_msg) = &messages[0] {
             println!("Message type_url: {}", any_msg.type_url);
             let deposit_msg = MsgDeposit::decode(any_msg.value.as_slice()).unwrap();
-            
+
             println!("Deposit message: {:?}", deposit_msg);
-            
+
             // First fee tier should use its percentage of the tokens
             assert_eq!(deposit_msg.tick_indexes_a_to_b[0], 0);
-            
+
             // Check that amounts are approximately correct based on the fee tier percentage
             let amount_a: Uint128 = deposit_msg.amounts_a[0].parse().unwrap();
             let amount_b: Uint128 = deposit_msg.amounts_b[0].parse().unwrap();
-            
+
             assert!(amount_a > Uint128::zero());
             assert!(amount_b > Uint128::zero());
         } else {
@@ -331,11 +353,11 @@ mod tests {
         let config = setup_test_config();
         let prices = setup_test_prices();
         let tick_index = 0;
-        
+
         // Test with uneven balances
         let token0_balance = Uint128::new(2000000);
         let token1_balance = Uint128::new(1000000);
-        
+
         let messages = get_deposit_messages(
             &env,
             config,
@@ -343,25 +365,33 @@ mod tests {
             prices,
             token0_balance,
             token1_balance,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Should return at least one message
-        assert!(!messages.is_empty(), "Expected at least one deposit message");
-        
+        assert!(
+            !messages.is_empty(),
+            "Expected at least one deposit message"
+        );
+
         // Verify the messages are properly formatted
         for (i, msg) in messages.iter().enumerate() {
             if let CosmosMsg::Any(any_msg) = msg {
                 let deposit_msg = MsgDeposit::decode(any_msg.value.as_slice()).unwrap();
-                
+
                 println!("Message {}: {:?}", i, deposit_msg);
-                
+
                 // Each message should have valid amounts
                 for (j, amount_a) in deposit_msg.amounts_a.iter().enumerate() {
                     let amount_a_uint: Uint128 = amount_a.parse().unwrap();
                     let amount_b_uint: Uint128 = deposit_msg.amounts_b[j].parse().unwrap();
-                    
-                    assert!(amount_a_uint > Uint128::zero() || amount_b_uint > Uint128::zero(),
-                        "Expected at least one non-zero amount in message {}, position {}", i, j);
+
+                    assert!(
+                        amount_a_uint > Uint128::zero() || amount_b_uint > Uint128::zero(),
+                        "Expected at least one non-zero amount in message {}, position {}",
+                        i,
+                        j
+                    );
                 }
             } else {
                 panic!("Expected Any message, got: {:?}", msg);
@@ -377,13 +407,13 @@ mod tests {
         // Set token0 to be worth twice as much as token1
         prices.token_0_price = PrecDec::from_ratio(2u128, 1u128);
         prices.price_0_to_1 = PrecDec::from_ratio(2u128, 1u128);
-        
+
         let tick_index = 0;
-        
+
         // Equal token amounts but different values due to price
         let token0_balance = Uint128::new(1000000);
         let token1_balance = Uint128::new(1000000);
-        
+
         let messages = get_deposit_messages(
             &env,
             config.clone(),
@@ -391,26 +421,37 @@ mod tests {
             prices,
             token0_balance,
             token1_balance,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Should return at least one message
-        assert!(!messages.is_empty(), "Expected at least one deposit message");
-        
+        assert!(
+            !messages.is_empty(),
+            "Expected at least one deposit message"
+        );
+
         // Verify the messages are properly formatted
         for (i, msg) in messages.iter().enumerate() {
             if let CosmosMsg::Any(any_msg) = msg {
                 let deposit_msg = MsgDeposit::decode(any_msg.value.as_slice()).unwrap();
-                
+
                 println!("Message {}: {:?}", i, deposit_msg);
-                
+
                 // Each message should have valid tick indexes and fees
                 for j in 0..deposit_msg.tick_indexes_a_to_b.len() {
                     // The tick index should be the one we provided
                     assert_eq!(deposit_msg.tick_indexes_a_to_b[j], tick_index);
-                    
+
                     // The fee should be one of the configured fees
-                    assert!(config.fee_tier_config.fee_tiers.iter().any(|tier| tier.fee == deposit_msg.fees[j]),
-                        "Fee {} not found in config", deposit_msg.fees[j]);
+                    assert!(
+                        config
+                            .fee_tier_config
+                            .fee_tiers
+                            .iter()
+                            .any(|tier| tier.fee == deposit_msg.fees[j]),
+                        "Fee {} not found in config",
+                        deposit_msg.fees[j]
+                    );
                 }
             } else {
                 panic!("Expected Any message, got: {:?}", msg);
@@ -418,4 +459,3 @@ mod tests {
         }
     }
 }
-
