@@ -92,6 +92,12 @@ pub enum ContractError {
     #[error("Attempted deposit of invalid token amount")]
     InvalidTokenAmount,
 
+    #[error("Attempted withdraw of invalid token amount")]
+    InvalidWithdrawAmount,
+
+    #[error("Cannot withdraw zero amount")]
+    ZeroBurnAmount,
+
     #[error("LP token already created")]
     TokenAlreadyCreated,
 
@@ -103,6 +109,9 @@ pub enum ContractError {
 
     #[error("Funds cannot be received here")]
     FundsNotAllowed,
+
+    #[error("Only LP tokens can be used for withdrawals")]
+    OnlyLpTokenAllowed,
 
     #[error("failed to convert uint to int. value of coin amount as Uint128 exceeds max possible Int128 amount")]
     ConversionError,

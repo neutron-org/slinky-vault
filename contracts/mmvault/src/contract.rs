@@ -5,13 +5,12 @@ use crate::query::*;
 use crate::state::{Config, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, WITHDRAW_REPLY_ID};
 use crate::utils::*;
 use cosmwasm_std::{
-    attr, entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128, Addr
+    attr, entry_point, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
 };
 use cw2::set_contract_version;
 use prost::Message;
-use std::str::FromStr;
 use serde_json::to_vec;
-
+use std::str::FromStr;
 
 const CONTRACT_NAME: &str = concat!("crates.io:neutron-contracts__", env!("CARGO_PKG_NAME"));
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -21,11 +20,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 ///////////////
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(
-    deps: DepsMut,
-    _env: Env,
-    msg: MigrateMsg,
-) -> Result<Response, ContractError> {
+pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
     // Update contract version
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
@@ -87,7 +82,7 @@ pub fn instantiate(
         paused: msg.paused,
         oracle_contract: oracle_contract.clone(),
         skew: false,
-        imbalance: 50u32
+        imbalance: 50u32,
     };
 
     // PAIRDATA.save(deps.storage, &pool_data)?;
@@ -97,8 +92,14 @@ pub fn instantiate(
         .add_attribute("action", "noop")
         .add_attributes([
             attr("owner", format!("{:?}", config.whitelist)),
-            attr("max_blocks_stale_token_a", config.pair_data.token_0.max_blocks_old.to_string()),
-            attr("max_blocks_stale_token_b", config.pair_data.token_1.max_blocks_old.to_string()),
+            attr(
+                "max_blocks_stale_token_a",
+                config.pair_data.token_0.max_blocks_old.to_string(),
+            ),
+            attr(
+                "max_blocks_stale_token_b",
+                config.pair_data.token_1.max_blocks_old.to_string(),
+            ),
             attr("token_0_denom", pairs.token_0.denom),
             attr("token_0_symbol", pairs.token_0.pair.base),
             attr("token_0_quote_currency", pairs.token_0.pair.quote),
@@ -125,7 +126,7 @@ pub fn execute(
         ExecuteMsg::Withdraw { amount } => {
             // Prevent tokens from being sent with the Withdraw message
             if info.funds.len() != 1 {
-                return Err(ContractError::FundsNotAllowed);
+                return Err(ContractError::OnlyLpTokenAllowed);
             }
 
             let config = CONFIG.load(deps.storage)?;
@@ -133,6 +134,9 @@ pub fn execute(
 
             if lp_token.denom != config.lp_denom || lp_token.amount != amount {
                 return Err(ContractError::LpTokenError);
+            }
+            if amount.is_zero() {
+                return Err(ContractError::ZeroBurnAmount);
             }
             withdraw(deps, _env, info, amount)
         }
@@ -162,12 +166,7 @@ pub fn execute(
             if !info.funds.is_empty() {
                 return Err(ContractError::FundsNotAllowed);
             }
-            update_config(
-                deps,
-                _env,
-                info,
-                update,
-            )
+            update_config(deps, _env, info, update)
         }
     }
 }
@@ -183,7 +182,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
         QueryMsg::GetConfig {} => query_config(deps, _env),
         QueryMsg::GetPrices {} => {
             let prices = get_prices(deps, _env)?;
-            let serialized_prices = to_vec(&prices).map_err(|_| ContractError::SerializationError)?;
+            let serialized_prices =
+                to_vec(&prices).map_err(|_| ContractError::SerializationError)?;
             Ok(Binary::from(serialized_prices))
         }
     }
@@ -210,7 +210,8 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
             )
             .map_err(|_| ContractError::ParseError)?;
 
-            let amount = Uint128::from_str(&payload.amount).map_err(|_| ContractError::ParseError)?;
+            let amount =
+                Uint128::from_str(&payload.amount).map_err(|_| ContractError::ParseError)?;
 
             handle_withdrawal_reply(deps, env, msg.result, amount, payload.sender)
         }

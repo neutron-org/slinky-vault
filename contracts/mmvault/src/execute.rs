@@ -16,10 +16,15 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
     // Load the contract configuration
     let mut config = CONFIG.load(deps.storage)?;
 
+    if config.paused {
+        return Err(ContractError::Paused {});
+    }
+
     if let Some(response) = check_staleness(&env, &info, &mut config)? {
         CONFIG.save(deps.storage, &config)?;
         return Ok(response);
     }
+
     CONFIG.save(deps.storage, &config)?;
 
     // Extract the sent funds from the transaction info
@@ -60,12 +65,14 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
     // Get the value of the tokens in the contract
     let (deposit_value_0, deposit_value_1) =
         get_token_value(prices.clone(), token0_deposited, token1_deposited)?;
+    let (total_value_0, total_value_1) =
+        get_token_value(prices.clone(), total_amount_0, total_amount_1)?;
 
     // calculate the total deposit value
-    let deposit_value = deposit_value_0.checked_add(deposit_value_1)?;
+    let total_value = total_value_0.checked_add(total_value_1)?;
 
     // check if they exceed the cap
-    let exceeds_cap = deposit_value > PrecDec::from_atomics(config.deposit_cap, 0).unwrap();
+    let exceeds_cap = total_value > PrecDec::from_atomics(config.deposit_cap, 0).unwrap();
 
     // Only enforce deposit cap for non-whitelisted addresses
     if exceeds_cap && !config.whitelist.contains(&info.sender) {
@@ -82,7 +89,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         total_amount_1,
     )?;
 
-    config.total_shares = amount_to_mint;
+    config.total_shares += amount_to_mint;
     CONFIG.save(deps.storage, &config)?;
 
     // Mint LP tokens
@@ -434,9 +441,9 @@ pub fn update_config(
         for tier in &fee_tier_config.fee_tiers {
             total_percentage += tier.percentage;
         }
-        if total_percentage > 100 {
+        if total_percentage != 100 {
             return Err(ContractError::InvalidFeeTier {
-                reason: "Total fee tier percentages must be <= 100%".to_string(),
+                reason: "Total fee tier percentages must add to 100%".to_string(),
             });
         }
         config.fee_tier_config = fee_tier_config;

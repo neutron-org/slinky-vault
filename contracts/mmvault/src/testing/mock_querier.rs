@@ -1,168 +1,194 @@
-use cosmwasm_std::testing::{MockApi, MockQuerier, MockStorage};
+use crate::msg::CombinedPriceResponse;
+use cosmwasm_std::testing::{MockApi, MockStorage};
 use cosmwasm_std::{
-    from_binary, to_binary, Binary, ContractResult, Empty, OwnedDeps, Querier, QuerierResult,
-    QueryRequest, SystemError, SystemResult, WasmQuery,
+    from_json, to_binary, Coin, ContractResult, Empty, OwnedDeps, Querier,
+    QuerierResult, QueryRequest, SystemError, SystemResult, WasmQuery, Binary, BankQuery, BalanceResponse, Uint128
 };
-use neutron_std::types::neutron::util::precdec::PrecDec;
+use neutron_std::types::neutron::dex::{QueryAllUserDepositsResponse,  DepositRecord, MsgWithdrawalResponse};
+use serde;
 use std::collections::HashMap;
-use std::marker::PhantomData;
-use crate::msg::{CombinedPriceResponse};
-use serde_json::Value;
-use neutron_std::types::neutron::dex::{QueryAllUserDepositsResponse};
 use prost::Message;
 
-pub struct WasmMockQuerier {
-    base: MockQuerier,
-    price_data: HashMap<String, PrecDec>,
-    oracle_contract: String,
+pub fn mock_dependencies_with_custom_querier(
+    querier: MockQuerier,
+) -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
+    OwnedDeps {
+        storage: MockStorage::default(),
+        api: MockApi::default(),
+        querier,
+        custom_query_type: std::marker::PhantomData,
+    }
 }
 
-impl WasmMockQuerier {
+#[derive(Clone, Default)]
+pub struct MockQuerier {
+    price_response: Option<CombinedPriceResponse>,
+    stale_price: bool,
+    deposits: Option<QueryAllUserDepositsResponse>,
+    contract_balances: HashMap<String, Vec<Coin>>,
+    token_supply: HashMap<String, Uint128>,
+    withdrawal_sim_response: Option<MsgWithdrawalResponse>,
+}
+
+impl MockQuerier {
     pub fn new() -> Self {
-        WasmMockQuerier {
-            base: MockQuerier::new(&[]),
-            price_data: HashMap::new(),
-            oracle_contract: "oracle_contract_addr".to_string(),
-        }
+        MockQuerier::default()
     }
 
-    pub fn register_oracle(&mut self, address: impl Into<String>) {
-        self.oracle_contract = address.into();
+    pub fn set_price_response(&mut self, response: CombinedPriceResponse) {
+        self.price_response = Some(response);
     }
 
-    pub fn set_price(&mut self, token: &str, price: PrecDec) {
-        self.price_data.insert(token.to_string(), price);
+    pub fn set_stale_price(&mut self, stale: bool) {
+        self.stale_price = stale;
     }
 
-    fn handle_query(&self, request: &QueryRequest<Empty>) -> QuerierResult {
-        match &request {
-            QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
-                if contract_addr == &self.oracle_contract {
-                    let parsed: Value = match from_binary(msg) {
-                        Ok(parsed_msg) => parsed_msg,
-                        Err(e) => {
-                            return SystemResult::Err(SystemError::InvalidRequest {
-                                error: format!("Parsing query request: {}", e),
-                                request: msg.clone(),
-                            });
-                        }
-                    };
-                    
-                    if parsed.get("get_prices").is_some() {
-                        let token_0_price = self.price_data.get("uibcusdc")
-                            .cloned()
-                            .unwrap_or_else(PrecDec::one);
-                        let token_1_price = self.price_data.get("untrn")
-                            .cloned()
-                            .unwrap_or_else(PrecDec::one);
+    pub fn set_empty_deposits(&mut self) {
+        self.deposits = Some(QueryAllUserDepositsResponse {
+            deposits: vec![],
+            pagination: None,
+        });
+    }
 
-                        let price_0_to_1 = token_0_price / token_1_price;
+    pub fn set_deposits(&mut self, deposits: Vec<DepositRecord>) {
+        self.deposits = Some(QueryAllUserDepositsResponse {
+            deposits,
+            pagination: None,
+        });
+    }
 
-                        let response = CombinedPriceResponse {
-                            token_0_price,
-                            token_1_price,
-                            price_0_to_1,
-                        };
+    pub fn set_contract_balance(&mut self, contract_addr: &str, balances: Vec<Coin>) {
+        self.contract_balances.insert(contract_addr.to_string(), balances);
+    }
 
-                        match to_binary(&response) {
-                            Ok(binary_response) => SystemResult::Ok(ContractResult::Ok(binary_response)),
-                            Err(e) => SystemResult::Err(SystemError::InvalidResponse {
-                                error: format!("Serializing response: {}", e),
-                                response: vec![].into(),
-                            }),
-                        }
-                    } else if parsed.get("user_deposits_all").is_some() {
-                        // Handle DexQuerier::user_deposits_all query
-                        let response = QueryAllUserDepositsResponse {
-                            deposits: vec![],
-                            pagination: None,
-                        };
-                        
-                        match to_binary(&response) {
-                            Ok(binary_response) => SystemResult::Ok(ContractResult::Ok(binary_response)),
-                            Err(e) => SystemResult::Err(SystemError::InvalidResponse {
-                                error: format!("Serializing response: {}", e),
-                                response: vec![].into(),
-                            }),
-                        }
-                    } else {
-                        self.base.handle_query(request)
-                    }
-                } else if contract_addr.to_string().contains("neutron") {
-                    // This is likely a DexQuerier query
-                    let parsed: Value = match from_binary(msg) {
-                        Ok(parsed_msg) => parsed_msg,
-                        Err(e) => {
-                            return SystemResult::Err(SystemError::InvalidRequest {
-                                error: format!("Parsing query request: {}", e),
-                                request: msg.clone(),
-                            });
-                        }
-                    };
-                    
-                    if parsed.get("user_deposits_all").is_some() {
-                        // Handle DexQuerier::user_deposits_all query
-                        let response = QueryAllUserDepositsResponse {
-                            deposits: vec![],
-                            pagination: None,
-                        };
-                        
-                        match to_binary(&response) {
-                            Ok(binary_response) => SystemResult::Ok(ContractResult::Ok(binary_response)),
-                            Err(e) => SystemResult::Err(SystemError::InvalidResponse {
-                                error: format!("Serializing response: {}", e),
-                                response: vec![].into(),
-                            }),
-                        }
-                    } else {
-                        self.base.handle_query(request)
-                    }
-                } else {
-                    self.base.handle_query(request)
-                }
-            },
-            QueryRequest::Grpc(_) => {
-                // Create a properly encoded protobuf response
-                // For DexAllUserDeposits, return an empty list
-                let response = QueryAllUserDepositsResponse {
-                    deposits: vec![],
-                    pagination: None,
-                };
-                
-                // Encode the response as a protobuf message
-                let encoded = response.encode_to_vec();
-                
-                // Return the encoded response
-                SystemResult::Ok(ContractResult::Ok(Binary::from(encoded)))
-            },
-            _ => self.base.handle_query(request),
-        }
+    pub fn set_user_deposits_all_response(&mut self, deposits: Vec<DepositRecord>) {
+        self.deposits = Some(QueryAllUserDepositsResponse {
+            deposits,
+            pagination: None,
+        });
+    }
+
+    pub fn set_supply(&mut self, denom: &str, amount: u128) {
+        self.token_supply.insert(denom.to_string(), Uint128::new(amount));
+    }
+
+    pub fn set_withdrawal_simulation_response(&mut self, response: MsgWithdrawalResponse) {
+        self.withdrawal_sim_response = Some(response);
     }
 }
 
-impl Querier for WasmMockQuerier {
+impl Querier for MockQuerier {
     fn raw_query(&self, bin_request: &[u8]) -> QuerierResult {
-        let request: QueryRequest<Empty> = match from_binary(&Binary::from(bin_request)) {
+        let request: QueryRequest<Empty> = match from_json(bin_request) {
             Ok(v) => v,
             Err(e) => {
                 return SystemResult::Err(SystemError::InvalidRequest {
                     error: format!("Parsing query request: {}", e),
-                    request: Binary::from(bin_request),
-                });
+                    request: bin_request.into(),
+                })
             }
         };
-        self.handle_query(&request)
-    }
-}
 
-pub fn mock_dependencies() -> OwnedDeps<MockStorage, MockApi, WasmMockQuerier, Empty> {
-    let custom_storage = MockStorage::default();
-    let custom_querier = WasmMockQuerier::new();
+        match request {
+            QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
+                // Handle oracle price queries
+                if contract_addr.contains("oracle") {
+                    if let Some(price_response) = &self.price_response {
+                        if self.stale_price {
+                            // Return a response indicating stale price
+                            return SystemResult::Ok(ContractResult::Ok(
+                                to_binary(&serde_json::json!({
+                                    "error": "StalePrice",
+                                    "stale": true
+                                }))
+                                .unwrap(),
+                            ));
+                        } else {
+                            return SystemResult::Ok(ContractResult::Ok(
+                                to_binary(price_response).unwrap(),
+                            ));
+                        }
+                    }
+                }
+                // Handle dex deposit queries
+                else if String::from_utf8_lossy(msg.as_slice()).contains("user_deposits_all") {
+                    if let Some(deposits) = &self.deposits {
+                        return SystemResult::Ok(ContractResult::Ok(
+                            to_binary(deposits).unwrap(),
+                        ));
+                    }
+                }
+                // Handle balance queries
+                else if String::from_utf8_lossy(msg.as_slice()).contains("balance") {
+                    if let Some(balances) = self.contract_balances.get(&contract_addr) {
+                        return SystemResult::Ok(ContractResult::Ok(
+                            to_binary(&balances).unwrap(),
+                        ));
+                    }
+                }
 
-    OwnedDeps {
-        storage: custom_storage,
-        api: MockApi::default(),
-        querier: custom_querier,
-        custom_query_type: PhantomData,
+                SystemResult::Err(SystemError::InvalidRequest {
+                    error: format!("Unhandled smart query: {}", contract_addr),
+                    request: bin_request.into(),
+                })
+            },
+            QueryRequest::Grpc(grpc_query) => {
+                let path = grpc_query.path;
+                
+                // Handle GRPC queries
+                if path.contains("UserDepositsAll") {
+                    if let Some(deposits) = &self.deposits {
+                        // Encode the response as a protobuf message
+                        let encoded = deposits.encode_to_vec();
+                        return SystemResult::Ok(ContractResult::Ok(
+                            Binary::from(encoded)
+                        ));
+                    }
+                }
+                
+                SystemResult::Err(SystemError::InvalidRequest {
+                    error: format!("Unhandled GRPC query: {}", path),
+                    request: bin_request.into(),
+                })
+            },
+            QueryRequest::Bank(BankQuery::Balance { address, denom }) => {
+                // Check if we have a balance for this contract
+                if let Some(balances) = self.contract_balances.get(&address) {
+                    // Find the requested denom
+                    let amount = balances
+                        .iter()
+                        .find(|c| c.denom == denom)
+                        .map(|c| c.amount)
+                        .unwrap_or_default();
+
+                    let bank_response = BalanceResponse::new(Coin {
+                        denom: denom.clone(),
+                        amount
+                    });
+                    SystemResult::Ok(ContractResult::Ok(to_binary(&bank_response).unwrap()))
+                } else {
+                    // Return zero balance if not found
+                    let bank_response = BalanceResponse::new(Coin {
+                        denom: denom.clone(),
+                        amount: Uint128::zero()
+                    });
+                    SystemResult::Ok(ContractResult::Ok(to_binary(&bank_response).unwrap()))
+                }
+            },
+            QueryRequest::Bank(BankQuery::Supply { denom }) => {
+                let amount = self.token_supply.get(&denom).cloned().unwrap_or_default();
+                let supply_response = cosmwasm_std::SupplyResponse::new (
+                    Coin {
+                        denom: denom.clone(),
+                        amount,
+                    },
+            );
+                SystemResult::Ok(ContractResult::Ok(to_binary(&supply_response).unwrap()))
+            },
+            _ => SystemResult::Err(SystemError::InvalidRequest {
+                error: "Unhandled query".to_string(),
+                request: bin_request.into(),
+            }),
+        }
     }
 }

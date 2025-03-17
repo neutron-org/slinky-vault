@@ -2,8 +2,8 @@ use crate::error::{ContractError, ContractResult};
 use crate::msg::{CombinedPriceResponse, DepositResult};
 use crate::state::{Config, PairData, TokenData, CONFIG, SHARES_MULTIPLIER};
 use cosmwasm_std::{
-    BalanceResponse, BankMsg, BankQuery, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, QueryRequest,
-    ReplyOn, SubMsg, SubMsgResponse, Uint128, Response, MessageInfo
+    BalanceResponse, BankMsg, BankQuery, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    QueryRequest, ReplyOn, Response, SubMsg, SubMsgResponse, Uint128,
 };
 use neutron_std::types::neutron::dex::{
     DepositOptions, DexQuerier, MsgDeposit, MsgWithdrawal, MsgWithdrawalResponse,
@@ -145,23 +145,23 @@ pub fn get_deposit_data(
 
     let (final_amount_0, final_amount_1) = if value_token_0 > value_token_1 {
         let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(config_imbalance);
-        
+
         let additional_token_0 = imbalance.checked_div(prices.token_0_price)?;
-        
+
         let final_0 = computed_amount_0
-                + Uint128::try_from(additional_token_0.to_uint_floor())
-                    .map_err(|_| ContractError::ConversionError)?;
+            + Uint128::try_from(additional_token_0.to_uint_floor())
+                .map_err(|_| ContractError::ConversionError)?;
         let final_1 = computed_amount_1;
         (final_0, final_1)
     } else if value_token_1 > value_token_0 {
         let imbalance = (value_token_1 - value_token_0) * PrecDec::percent(config_imbalance);
-        
+
         let additional_token_1 = imbalance.checked_div(prices.token_1_price)?;
-        
+
         let final_0 = computed_amount_0;
         let final_1 = computed_amount_1
-                + Uint128::try_from(additional_token_1.to_uint_floor())
-                    .map_err(|_| ContractError::ConversionError)?;
+            + Uint128::try_from(additional_token_1.to_uint_floor())
+                .map_err(|_| ContractError::ConversionError)?;
         (final_0, final_1)
     } else {
         (computed_amount_0, computed_amount_1)
@@ -189,7 +189,6 @@ pub fn get_deposit_data(
 
     // Calculate adjusted tick index based on token value imbalance
     let adjusted_tick_index = if skew {
-        
         calculate_adjusted_tick_index(tick_index, fee, total_value_token_0, total_value_token_1)?
     } else {
         tick_index
@@ -249,7 +248,7 @@ pub fn calculate_adjusted_tick_index(
         let imbalance = value_token_0
             .checked_sub(value_token_1)?
             .checked_div(total_value)?;
-        
+
         imbalance
             .to_string()
             .parse::<f64>()
@@ -259,7 +258,7 @@ pub fn calculate_adjusted_tick_index(
         let imbalance = value_token_1
             .checked_sub(value_token_0)?
             .checked_div(total_value)?;
-        
+
         -imbalance
             .to_string()
             .parse::<f64>()
@@ -440,6 +439,10 @@ pub fn get_deposit_messages(
 ) -> Result<Vec<CosmosMsg>, ContractError> {
     let mut messages = Vec::new();
 
+    if config.paused {
+        return Ok(messages);
+    }
+
     // get the amount to deposit at the tightest spread
     let deposit_data = get_deposit_data(
         token_0_balance,
@@ -471,19 +474,84 @@ pub fn get_deposit_messages(
         messages.push(dex_msg);
     }
 
-    // Calculate remaining amounts for ambient deposits
-    let remaining_amount0 = token_0_balance
-        .checked_sub(deposit_data.amount0)
-        .unwrap_or(Uint128::zero());
-    let remaining_amount1 = token_1_balance
-        .checked_sub(deposit_data.amount1)
-        .unwrap_or(Uint128::zero());
-
-    // get the remaining deposit messages
-    for fee_tier in config.fee_tier_config.fee_tiers.iter() {
-        let amount_0 = remaining_amount0.multiply_ratio(fee_tier.percentage, 100u128);
-        let amount_1 = remaining_amount1.multiply_ratio(fee_tier.percentage, 100u128);
-        if amount_0 > Uint128::zero() || amount_1 > Uint128::zero() {
+    // Calculate remaining amounts after first deposit
+    let mut remaining_amount0 = token_0_balance.checked_sub(deposit_data.amount0).unwrap_or(Uint128::zero());
+    let mut remaining_amount1 = token_1_balance.checked_sub(deposit_data.amount1).unwrap_or(Uint128::zero());
+    
+    // If no remaining tokens or no additional fee tiers, return early
+    if (remaining_amount0.is_zero() && remaining_amount1.is_zero()) || config.fee_tier_config.fee_tiers.len() <= 1 {
+        return Ok(messages);
+    }
+    
+    // Calculate sum of remaining percentages
+    let remaining_percentages: u64 = config.fee_tier_config.fee_tiers.iter()
+        .skip(1)
+        .map(|tier| tier.percentage)
+        .sum();
+    
+    if remaining_percentages == 0 {
+        return Ok(messages);
+    }
+    
+    // Process remaining fee tiers
+    let remaining_tiers = config.fee_tier_config.fee_tiers.iter().skip(1).collect::<Vec<_>>();
+    
+    // Calculate the total amount to distribute for each token
+    let total_amount0_to_distribute = remaining_amount0;
+    let total_amount1_to_distribute = remaining_amount1;
+    
+    let mut distributed_amount0 = Uint128::zero();
+    let mut distributed_amount1 = Uint128::zero();
+    
+    for (i, fee_tier) in remaining_tiers.iter().enumerate() {
+        // For the last tier, use all remaining tokens
+        if i == remaining_tiers.len() - 1 {
+            let amount_0 = total_amount0_to_distribute - distributed_amount0;
+            let amount_1 = total_amount1_to_distribute - distributed_amount1;
+            
+            // Skip if both amounts are zero
+            if amount_0.is_zero() && amount_1.is_zero() {
+                continue;
+            }
+            
+            // Create deposit message
+            let dex_msg = Into::<CosmosMsg>::into(MsgDeposit {
+                creator: env.contract.address.to_string(),
+                receiver: env.contract.address.to_string(),
+                token_a: config.pair_data.token_0.denom.clone(),
+                token_b: config.pair_data.token_1.denom.clone(),
+                amounts_a: vec![amount_0.to_string()],
+                amounts_b: vec![amount_1.to_string()],
+                tick_indexes_a_to_b: vec![deposit_data.tick_index],
+                fees: vec![fee_tier.fee],
+                options: vec![DepositOptions {
+                    disable_autoswap: false,
+                    fail_tx_on_bel: false,
+                    swap_on_deposit: true,
+                }],
+            });
+            messages.push(dex_msg);
+        } else {
+            // Calculate exact amount based on percentage
+            let amount_0 = total_amount0_to_distribute.multiply_ratio(
+                fee_tier.percentage as u128, 
+                remaining_percentages as u128
+            );
+            let amount_1 = total_amount1_to_distribute.multiply_ratio(
+                fee_tier.percentage as u128, 
+                remaining_percentages as u128
+            );
+            
+            // Skip if both amounts are zero
+            if amount_0.is_zero() && amount_1.is_zero() {
+                continue;
+            }
+            
+            // Track distributed amounts
+            distributed_amount0 += amount_0;
+            distributed_amount1 += amount_1;
+            
+            // Create deposit message
             let dex_msg = Into::<CosmosMsg>::into(MsgDeposit {
                 creator: env.contract.address.to_string(),
                 receiver: env.contract.address.to_string(),
@@ -541,7 +609,9 @@ pub fn get_withdrawal_messages(
     let mut messages: Vec<CosmosMsg> = vec![];
 
     let total_supply: Uint128 = deps.querier.query_supply(&config.lp_denom)?.amount;
-
+    if burn_amount > total_supply {
+        return Err(ContractError::InvalidWithdrawAmount);
+    }
     // Calculate withdrawal amounts using multiplication before division to prevent precision loss
     // and potential overflow. result is floored by default
     let withdraw_amount_0 = total_amount_0.multiply_ratio(burn_amount, total_supply);
@@ -589,7 +659,6 @@ pub fn get_withdrawal_messages(
     }
     Ok((messages, withdraw_amount_0, withdraw_amount_1))
 }
-
 
 /// Checks if the contract is stale and handles the pause logic.
 /// Returns Ok(None) if the contract is not stale or on hold.

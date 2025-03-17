@@ -92,9 +92,9 @@ impl InstantiateMsg {
         }
 
         // Ensure total percentage is less than 100%
-        if total_percentage > 100 {
+        if total_percentage != 100 {
             return Err(ContractError::InvalidFeeTier {
-                reason: "Total fee tier percentages must be <= 100%".to_string(),
+                reason: "Total fee tier percentages must be == 100%".to_string(),
             });
         }
 
