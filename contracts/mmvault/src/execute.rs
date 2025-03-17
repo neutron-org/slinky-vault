@@ -461,6 +461,13 @@ pub fn update_config(
         config.imbalance = imbalance;
     }
 
+    if let Some(oracle_contract) = update.oracle_contract {
+        config.oracle_contract = deps
+            .api
+            .addr_validate(&oracle_contract)
+            .map_err(ContractError::Std)?;
+    }
+
     // Save updated config
     CONFIG.save(deps.storage, &config)?;
 

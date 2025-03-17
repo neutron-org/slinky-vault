@@ -50,6 +50,7 @@ pub struct ConfigUpdateMsg {
     pub paused: Option<bool>,
     pub skew: Option<bool>,
     pub imbalance: Option<u32>,
+    pub oracle_contract: Option<String>,
 }
 
 impl InstantiateMsg {
