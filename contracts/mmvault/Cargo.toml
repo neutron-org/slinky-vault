@@ -19,7 +19,7 @@ cw2 = {  workspace = true }
 cw-storage-plus = { workspace = true }
 thiserror = { workspace = true }
 test-case = { workspace = true }
-neutron-std = { git = "https://github.com/neutron-org/neutron-std", rev = "bfe745f7a7080f681dfef97d053932897cbe0f6e" }
+neutron-std = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 
