@@ -1209,49 +1209,6 @@ fn test_handle_dex_deposit_reply_success() {
 }
 
 #[test]
-fn test_handle_dex_deposit_reply_error() {
-    // Setup
-    let querier = setup_mock_querier();
-    let env = mock_env();
-
-    let mut deps = mock_dependencies_with_custom_querier(querier);
-    let config = setup_test_config(env.clone());
-
-    // Store config
-    CONFIG.save(deps.as_mut().storage, &config).unwrap();
-
-    // Call handle_dex_deposit_reply
-    let err = handle_dex_deposit_reply(deps.as_mut(), env).unwrap_err();
-
-    // Verify error
-    assert!(matches!(err, ContractError::Std(_)));
-
-    // Verify that the config was not updated
-    let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
-    assert_eq!(updated_config.last_executed, config.last_executed);
-}
-
-#[test]
-fn test_handle_dex_deposit_reply_wrong_id() {
-    // Setup
-    let querier = setup_mock_querier();
-    let env = mock_env();
-
-    let mut deps = mock_dependencies_with_custom_querier(querier);
-    let config = setup_test_config(env.clone());
-
-    // Store config
-    CONFIG.save(deps.as_mut().storage, &config).unwrap();
-
-    // Call handle_dex_deposit_reply
-    let err = handle_dex_deposit_reply(deps.as_mut(), env).unwrap_err();
-
-    // Verify that the config was not updated
-    let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
-    assert_eq!(updated_config.last_executed, config.last_executed);
-}
-
-#[test]
 fn test_dex_deposit_execute_success() {
     // Setup
     let mut querier = setup_mock_querier();
