@@ -6,15 +6,14 @@ use cosmwasm_std::{
     QueryRequest, ReplyOn, Response, SubMsg, SubMsgResponse, Uint128,
 };
 use neutron_std::types::neutron::dex::{
-    DepositOptions, DexQuerier, MsgDeposit, MsgWithdrawal, MsgWithdrawalResponse,
-    QueryAllUserDepositsResponse, MsgPlaceLimitOrder, LimitOrderType
+    DepositOptions, DexQuerier, LimitOrderType, MsgDeposit, MsgPlaceLimitOrder, MsgWithdrawal,
+    MsgWithdrawalResponse, QueryAllUserDepositsResponse,
 };
 use neutron_std::types::neutron::util::precdec::PrecDec;
 use neutron_std::types::osmosis::tokenfactory::v1beta1::MsgBurn;
 use neutron_std::types::osmosis::tokenfactory::v1beta1::MsgCreateDenomResponse;
 
 use prost::Message;
-use std::str::FromStr;
 
 pub fn sort_token_data_and_get_pair_id_str(
     token0: &TokenData,
@@ -575,6 +574,7 @@ pub fn get_deposit_messages(
                 options: vec![DepositOptions {
                     disable_autoswap: false,
                     fail_tx_on_bel: false,
+                    swap_on_deposit: true,
                 }],
             });
             messages.push(dex_msg);
@@ -726,15 +726,14 @@ pub fn prepare_state(
     config: &Config,
     index: i64,
     prices: crate::msg::CombinedPriceResponse,
-) -> Result<(Vec<CosmosMsg>), ContractError> {
+) -> Result<Vec<CosmosMsg>, ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
     let target_tick_index_0 = index + config.fee_tier_config.fee_tiers[0].fee as i64;
     let target_tick_index_1 = -index + config.fee_tier_config.fee_tiers[0].fee as i64;
 
     let balances = query_contract_balance(deps, env.clone(), config.pair_data.clone())?;
-    let mut token_0_usable = balances[0].amount;
-    let mut token_1_usable = balances[1].amount;
-
+    let token_0_usable = balances[0].amount;
+    let token_1_usable = balances[1].amount;
 
     // First limit order simulation (token 0 -> token 1)
     let limit_order_msg_token_0 = MsgPlaceLimitOrder {
@@ -748,7 +747,12 @@ pub fn prepare_state(
         expiration_time: None,
         max_amount_out: None,
         limit_sell_price: None,
-        min_average_sell_price: Some(prices.token_0_price.checked_mul(PrecDec::percent(90))?.to_prec_dec_string()),
+        min_average_sell_price: Some(
+            prices
+                .token_0_price
+                .checked_mul(PrecDec::percent(90))?
+                .to_prec_dec_string(),
+        ),
     };
     messages.push(limit_order_msg_token_0.into());
     // Second limit order simulation (token 1 -> token 0)
@@ -763,9 +767,13 @@ pub fn prepare_state(
         expiration_time: None,
         max_amount_out: None,
         limit_sell_price: None,
-        min_average_sell_price: Some(prices.token_1_price.checked_mul(PrecDec::percent(90))?.to_prec_dec_string()),
+        min_average_sell_price: Some(
+            prices
+                .token_1_price
+                .checked_mul(PrecDec::percent(90))?
+                .to_prec_dec_string(),
+        ),
     };
     messages.push(limit_order_msg_token_1.into());
-    Ok((messages))
+    Ok(messages)
 }
-

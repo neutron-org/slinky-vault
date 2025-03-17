@@ -1,7 +1,8 @@
 use crate::error::ContractError;
 use crate::msg::{CombinedPriceResponse, ConfigUpdateMsg, WithdrawPayload};
 use crate::state::{
-    CONFIG, CREATE_TOKEN_REPLY_ID, WITHDRAW_REPLY_ID, DEX_DEPOSIT_REPLY_ID_1, DEX_DEPOSIT_REPLY_ID_2
+    CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_ID_1, DEX_DEPOSIT_REPLY_ID_2,
+    WITHDRAW_REPLY_ID,
 };
 use crate::utils::*;
 use cosmwasm_std::{
@@ -225,10 +226,10 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     let tick_index = price_to_tick_index(prices.price_0_to_1)?;
 
     let prepare_state_messages = prepare_state(&deps, &env, &config, tick_index, prices.clone())?;
-    
+
     // Create submessages with appropriate payload IDs
     let mut submessages = Vec::new();
-    
+
     for (i, msg) in prepare_state_messages.into_iter().enumerate() {
         if i == 0 {
             submessages.push(SubMsg::reply_always(msg, DEX_DEPOSIT_REPLY_ID_1));
@@ -236,22 +237,10 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
             submessages.push(SubMsg::reply_always(msg, DEX_DEPOSIT_REPLY_ID_2));
         }
     }
-    
-    let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
-
-    let messages = get_deposit_messages(
-        &env,
-        config.clone(),
-        tick_index,
-        prices,
-        balances[0].amount,
-        balances[1].amount,
-    )?;
 
     Ok(Response::new()
         .add_submessages(submessages)
-        .add_attribute("action", "prepare_dex_deposit")
-    )
+        .add_attribute("action", "prepare_dex_deposit"))
 }
 
 pub fn dex_withdrawal(
@@ -507,13 +496,9 @@ pub fn update_config(
         .add_attribute("lp_denom", config.lp_denom))
 }
 
-pub fn handle_dex_deposit_reply(
-    deps: DepsMut,
-    env: Env,
-) -> Result<Response, ContractError> {
+pub fn handle_dex_deposit_reply(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
-    deps.api.debug(&format!(">>>>>>>HERE DEPOSIT BEGINS"));
     let prices = get_prices(deps.as_ref(), env.clone())?;
     let tick_index = price_to_tick_index(prices.price_0_to_1)?;
     let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;

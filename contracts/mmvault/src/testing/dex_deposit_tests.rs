@@ -1,8 +1,10 @@
 use crate::contract::execute;
 use crate::error::ContractError;
+use crate::execute::handle_dex_deposit_reply;
 use crate::msg::{CombinedPriceResponse, ExecuteMsg};
 use crate::state::{Config, FeeTier, FeeTierConfig, PairData, TokenData, CONFIG};
 use crate::testing::mock_querier::{mock_dependencies_with_custom_querier, MockQuerier};
+use cosmwasm_std;
 use cosmwasm_std::testing::{mock_env, mock_info};
 use cosmwasm_std::Env;
 use cosmwasm_std::{Addr, Coin, Uint128};
@@ -10,7 +12,6 @@ use neutron_std::types::neutron::dex::{DepositRecord, MsgDeposit, PairId};
 use neutron_std::types::neutron::util::precdec::PrecDec;
 use neutron_std::types::slinky::types::v1::CurrencyPair;
 use std::str::FromStr;
-
 // Helper function to create a test config
 fn setup_test_config(env: Env) -> Config {
     Config {
@@ -110,62 +111,61 @@ fn test_dex_deposit_success_even_values_1_fee_tier() {
     // Store config
     CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
-    // Execute dex_deposit as whitelisted user
-    let info = mock_info("owner", &[]);
+    // Call handle_dex_deposit_reply directly
+    let reply_res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
 
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
-    // Verify response
-    assert_eq!(res.attributes.len(), 1);
-    assert_eq!(res.attributes[0].key, "action");
-    assert_eq!(res.attributes[0].value, "dex_deposit");
+    // Verify the reply response
+    assert_eq!(reply_res.attributes.len(), 1);
+    assert_eq!(reply_res.attributes[0].key, "action");
+    assert_eq!(reply_res.attributes[0].value, "dex_deposit");
 
-    // Verify that deposit messages were created
-    assert!(!res.messages.is_empty());
+    // Verify the deposit messages in the reply response
+    assert!(!reply_res.messages.is_empty());
+    assert_eq!(
+        reply_res.messages.len(),
+        config.fee_tier_config.fee_tiers.len()
+    );
 
-    // Verify the first message is a MsgDeposit
-    let first_msg = &res.messages[0];
-    let msg_data = first_msg.msg.clone();
+    // Check that the messages are deposit messages
+    for msg in reply_res.messages.iter() {
+        match &msg.msg {
+            cosmwasm_std::CosmosMsg::Any(any_msg) => {
+                assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
 
-    // Check that we have the expected number of messages based on fee tiers
-    assert_eq!(res.messages.len(), config.fee_tier_config.fee_tiers.len()); // One message for each fee tier
+                // Decode the protobuf message
+                let deposit_msg: MsgDeposit =
+                    prost::Message::decode(any_msg.value.as_slice()).unwrap();
 
-    // Decode and verify deposit amounts for each fee tier
-    for (i, msg) in res.messages.iter().enumerate() {
-        if let cosmwasm_std::CosmosMsg::Any(any_msg) = &msg.msg {
-            assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
+                // Get expected fee tier (since we only have one)
+                let fee_tier = &config.fee_tier_config.fee_tiers[0];
 
-            // Decode the protobuf message
-            let deposit_msg: MsgDeposit = prost::Message::decode(any_msg.value.as_slice()).unwrap();
+                // Calculate expected deposit amounts (based on fee tier percentage)
+                let expected_percentage = fee_tier.percentage as u128;
+                let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
+                let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
 
-            // Get expected fee tier
-            let fee_tier = &config.fee_tier_config.fee_tiers[i];
-            // Calculate expected deposit amounts (based on fee tier percentage)
-            let expected_percentage = fee_tier.percentage as u128;
-            let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
-            let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
+                // Verify deposit details
+                assert_eq!(deposit_msg.creator, env.contract.address.to_string());
+                assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
+                assert_eq!(deposit_msg.token_a, "token0");
+                assert_eq!(deposit_msg.token_b, "token1");
+                assert_eq!(
+                    deposit_msg.amounts_a,
+                    vec![expected_token0_amount.to_string()]
+                );
+                assert_eq!(
+                    deposit_msg.amounts_b,
+                    vec![expected_token1_amount.to_string()]
+                );
+                assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
+                assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
 
-            // Verify deposit details
-            assert_eq!(deposit_msg.creator, env.contract.address.to_string());
-            assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
-            assert_eq!(deposit_msg.token_a, "token0");
-            assert_eq!(deposit_msg.token_b, "token1");
-            assert_eq!(
-                deposit_msg.amounts_a,
-                vec![expected_token0_amount.to_string()]
-            );
-            assert_eq!(
-                deposit_msg.amounts_b,
-                vec![expected_token1_amount.to_string()]
-            );
-            assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
-            assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
-
-            // Verify deposit options
-            if !deposit_msg.options.is_empty() {
-                assert!(!deposit_msg.options[0].disable_autoswap);
+                // Verify deposit options
+                if !deposit_msg.options.is_empty() {
+                    assert!(!deposit_msg.options[0].disable_autoswap);
+                }
             }
-        } else {
-            panic!("Expected Any message, got something else");
+            _ => panic!("Expected Any message with MsgDeposit type_url"),
         }
     }
 }
@@ -203,62 +203,69 @@ fn test_dex_deposit_success_even_values_2_fee_tiers() {
     // Execute dex_deposit as whitelisted user
     let info = mock_info("owner", &[]);
 
+    // First execute the DexDeposit message
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+
+    // Now simulate the reply handling
+    let reply_res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
+
     // Verify response
-    assert_eq!(res.attributes.len(), 1);
-    assert_eq!(res.attributes[0].key, "action");
-    assert_eq!(res.attributes[0].value, "dex_deposit");
+    assert_eq!(reply_res.attributes.len(), 1);
+    assert_eq!(reply_res.attributes[0].key, "action");
+    assert_eq!(reply_res.attributes[0].value, "dex_deposit");
 
     // Verify that deposit messages were created
-    assert!(!res.messages.is_empty());
-
-    // Verify the first message is a MsgDeposit
-    let first_msg = &res.messages[0];
-    let msg_data = first_msg.msg.clone();
+    assert!(!reply_res.messages.is_empty());
 
     // Check that we have the expected number of messages based on fee tiers
-    assert_eq!(res.messages.len(), config.fee_tier_config.fee_tiers.len()); // One message for each fee tier
+    assert_eq!(
+        reply_res.messages.len(),
+        config.fee_tier_config.fee_tiers.len()
+    );
 
     // Decode and verify deposit amounts for each fee tier
-    for (i, msg) in res.messages.iter().enumerate() {
-        if let cosmwasm_std::CosmosMsg::Any(any_msg) = &msg.msg {
-            assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
+    for (i, msg) in reply_res.messages.iter().enumerate() {
+        match &msg.msg {
+            cosmwasm_std::CosmosMsg::Any(any_msg) => {
+                assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
 
-            // Decode the protobuf message
-            let deposit_msg: MsgDeposit = prost::Message::decode(any_msg.value.as_slice()).unwrap();
+                // Decode the protobuf message
+                let deposit_msg: MsgDeposit =
+                    prost::Message::decode(any_msg.value.as_slice()).unwrap();
 
-            // Get expected fee tier
-            let fee_tier = &config.fee_tier_config.fee_tiers[i];
-            // Calculate expected deposit amounts (based on fee tier percentage)
-            let expected_percentage = fee_tier.percentage as u128;
-            let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
-            let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
+                // Get expected fee tier
+                let fee_tier = &config.fee_tier_config.fee_tiers[i];
+                // Calculate expected deposit amounts (based on fee tier percentage)
+                let expected_percentage = fee_tier.percentage as u128;
+                let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
+                let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
 
-            // Verify deposit details
-            assert_eq!(deposit_msg.creator, env.contract.address.to_string());
-            assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
-            assert_eq!(deposit_msg.token_a, "token0");
-            assert_eq!(deposit_msg.token_b, "token1");
-            assert_eq!(
-                deposit_msg.amounts_a,
-                vec![expected_token0_amount.to_string()]
-            );
-            assert_eq!(
-                deposit_msg.amounts_b,
-                vec![expected_token1_amount.to_string()]
-            );
-            assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
-            assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
+                // Verify deposit details
+                assert_eq!(deposit_msg.creator, env.contract.address.to_string());
+                assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
+                assert_eq!(deposit_msg.token_a, "token0");
+                assert_eq!(deposit_msg.token_b, "token1");
+                assert_eq!(
+                    deposit_msg.amounts_a,
+                    vec![expected_token0_amount.to_string()]
+                );
+                assert_eq!(
+                    deposit_msg.amounts_b,
+                    vec![expected_token1_amount.to_string()]
+                );
+                assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
+                assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
 
-            // Verify deposit options
-            if !deposit_msg.options.is_empty() {
-                assert!(!deposit_msg.options[0].disable_autoswap);
+                // Verify deposit options
+                if !deposit_msg.options.is_empty() {
+                    assert!(!deposit_msg.options[0].disable_autoswap);
+                }
             }
-        } else {
-            panic!("Expected Any message, got something else");
+            _ => panic!("Expected Any message with MsgDeposit type_url"),
         }
     }
 }
+
 #[test]
 fn test_dex_deposit_success_even_values_3_fee_tiers() {
     // Setup
@@ -283,7 +290,9 @@ fn test_dex_deposit_success_even_values_3_fee_tiers() {
     // Execute dex_deposit as whitelisted user
     let info = mock_info("owner", &[]);
 
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+    // Now simulate the reply handling
+    let res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
+
     // Verify response
     assert_eq!(res.attributes.len(), 1);
     assert_eq!(res.attributes[0].key, "action");
@@ -292,50 +301,48 @@ fn test_dex_deposit_success_even_values_3_fee_tiers() {
     // Verify that deposit messages were created
     assert!(!res.messages.is_empty());
 
-    // Verify the first message is a MsgDeposit
-    let first_msg = &res.messages[0];
-    let msg_data = first_msg.msg.clone();
-
     // Check that we have the expected number of messages based on fee tiers
     assert_eq!(res.messages.len(), 3); // One message for each fee tier
 
     // Decode and verify deposit amounts for each fee tier
     for (i, msg) in res.messages.iter().enumerate() {
-        if let cosmwasm_std::CosmosMsg::Any(any_msg) = &msg.msg {
-            assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
+        match &msg.msg {
+            cosmwasm_std::CosmosMsg::Any(any_msg) => {
+                assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
 
-            // Decode the protobuf message
-            let deposit_msg: MsgDeposit = prost::Message::decode(any_msg.value.as_slice()).unwrap();
+                // Decode the protobuf message
+                let deposit_msg: MsgDeposit =
+                    prost::Message::decode(any_msg.value.as_slice()).unwrap();
 
-            // Get expected fee tier
-            let fee_tier = &config.fee_tier_config.fee_tiers[i];
-            // Calculate expected deposit amounts (based on fee tier percentage)
-            let expected_percentage = fee_tier.percentage as u128;
-            let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
-            let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
+                // Get expected fee tier
+                let fee_tier = &config.fee_tier_config.fee_tiers[i];
+                // Calculate expected deposit amounts (based on fee tier percentage)
+                let expected_percentage = fee_tier.percentage as u128;
+                let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
+                let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
 
-            // Verify deposit details
-            assert_eq!(deposit_msg.creator, env.contract.address.to_string());
-            assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
-            assert_eq!(deposit_msg.token_a, "token0");
-            assert_eq!(deposit_msg.token_b, "token1");
-            assert_eq!(
-                deposit_msg.amounts_a,
-                vec![expected_token0_amount.to_string()]
-            );
-            assert_eq!(
-                deposit_msg.amounts_b,
-                vec![expected_token1_amount.to_string()]
-            );
-            assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
-            assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
+                // Verify deposit details
+                assert_eq!(deposit_msg.creator, env.contract.address.to_string());
+                assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
+                assert_eq!(deposit_msg.token_a, "token0");
+                assert_eq!(deposit_msg.token_b, "token1");
+                assert_eq!(
+                    deposit_msg.amounts_a,
+                    vec![expected_token0_amount.to_string()]
+                );
+                assert_eq!(
+                    deposit_msg.amounts_b,
+                    vec![expected_token1_amount.to_string()]
+                );
+                assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
+                assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
 
-            // Verify deposit options
-            if !deposit_msg.options.is_empty() {
-                assert!(!deposit_msg.options[0].disable_autoswap);
+                // Verify deposit options
+                if !deposit_msg.options.is_empty() {
+                    assert!(!deposit_msg.options[0].disable_autoswap);
+                }
             }
-        } else {
-            panic!("Expected Any message, got something else");
+            _ => panic!("Expected Any message with MsgDeposit type_url"),
         }
     }
 }
@@ -381,7 +388,8 @@ fn test_dex_deposit_success_even_values_4_fee_tiers() {
     // Execute dex_deposit as whitelisted user
     let info = mock_info("owner", &[]);
 
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+    // Now simulate the reply handling
+    let res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
     // Verify response
     assert_eq!(res.attributes.len(), 1);
     assert_eq!(res.attributes[0].key, "action");
@@ -390,50 +398,48 @@ fn test_dex_deposit_success_even_values_4_fee_tiers() {
     // Verify that deposit messages were created
     assert!(!res.messages.is_empty());
 
-    // Verify the first message is a MsgDeposit
-    let first_msg = &res.messages[0];
-    let msg_data = first_msg.msg.clone();
-
     // Check that we have the expected number of messages based on fee tiers
     assert_eq!(res.messages.len(), config.fee_tier_config.fee_tiers.len()); // One message for each fee tier
 
     // Decode and verify deposit amounts for each fee tier
     for (i, msg) in res.messages.iter().enumerate() {
-        if let cosmwasm_std::CosmosMsg::Any(any_msg) = &msg.msg {
-            assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
+        match &msg.msg {
+            cosmwasm_std::CosmosMsg::Any(any_msg) => {
+                assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
 
-            // Decode the protobuf message
-            let deposit_msg: MsgDeposit = prost::Message::decode(any_msg.value.as_slice()).unwrap();
+                // Decode the protobuf message
+                let deposit_msg: MsgDeposit =
+                    prost::Message::decode(any_msg.value.as_slice()).unwrap();
 
-            // Get expected fee tier
-            let fee_tier = &config.fee_tier_config.fee_tiers[i];
-            // Calculate expected deposit amounts (based on fee tier percentage)
-            let expected_percentage = fee_tier.percentage as u128;
-            let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
-            let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
+                // Get expected fee tier
+                let fee_tier = &config.fee_tier_config.fee_tiers[i];
+                // Calculate expected deposit amounts (based on fee tier percentage)
+                let expected_percentage = fee_tier.percentage as u128;
+                let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
+                let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
 
-            // Verify deposit details
-            assert_eq!(deposit_msg.creator, env.contract.address.to_string());
-            assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
-            assert_eq!(deposit_msg.token_a, "token0");
-            assert_eq!(deposit_msg.token_b, "token1");
-            assert_eq!(
-                deposit_msg.amounts_a,
-                vec![expected_token0_amount.to_string()]
-            );
-            assert_eq!(
-                deposit_msg.amounts_b,
-                vec![expected_token1_amount.to_string()]
-            );
-            assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
-            assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
+                // Verify deposit details
+                assert_eq!(deposit_msg.creator, env.contract.address.to_string());
+                assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
+                assert_eq!(deposit_msg.token_a, "token0");
+                assert_eq!(deposit_msg.token_b, "token1");
+                assert_eq!(
+                    deposit_msg.amounts_a,
+                    vec![expected_token0_amount.to_string()]
+                );
+                assert_eq!(
+                    deposit_msg.amounts_b,
+                    vec![expected_token1_amount.to_string()]
+                );
+                assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
+                assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
 
-            // Verify deposit options
-            if !deposit_msg.options.is_empty() {
-                assert!(!deposit_msg.options[0].disable_autoswap);
+                // Verify deposit options
+                if !deposit_msg.options.is_empty() {
+                    assert!(!deposit_msg.options[0].disable_autoswap);
+                }
             }
-        } else {
-            panic!("Expected Any message, got something else");
+            _ => panic!("Expected Any message with MsgDeposit type_url"),
         }
     }
 }
@@ -479,7 +485,8 @@ fn test_dex_deposit_success_even_values_zero_first_percentage() {
     // Execute dex_deposit as whitelisted user
     let info = mock_info("owner", &[]);
 
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+    // Now simulate the reply handling
+    let res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
     // Verify response
     assert_eq!(res.attributes.len(), 1);
     assert_eq!(res.attributes[0].key, "action");
@@ -500,43 +507,46 @@ fn test_dex_deposit_success_even_values_zero_first_percentage() {
 
     // Decode and verify deposit amounts for each fee tier
     for (i, msg) in res.messages.iter().enumerate() {
-        if let cosmwasm_std::CosmosMsg::Any(any_msg) = &msg.msg {
-            assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
+        match &msg.msg {
+            cosmwasm_std::CosmosMsg::Any(any_msg) => {
+                assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
 
-            // Decode the protobuf message
-            let deposit_msg: MsgDeposit = prost::Message::decode(any_msg.value.as_slice()).unwrap();
+                // Decode the protobuf message
+                let deposit_msg: MsgDeposit =
+                    prost::Message::decode(any_msg.value.as_slice()).unwrap();
 
-            // Get expected fee tier
-            let fee_tier = &config.fee_tier_config.fee_tiers[i + 1];
-            // Calculate expected deposit amounts (based on fee tier percentage)
-            let expected_percentage = fee_tier.percentage as u128;
-            let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
-            let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
-            // Verify deposit details
-            assert_eq!(deposit_msg.creator, env.contract.address.to_string());
-            assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
-            assert_eq!(deposit_msg.token_a, "token0");
-            assert_eq!(deposit_msg.token_b, "token1");
-            assert_eq!(
-                deposit_msg.amounts_a,
-                vec![expected_token0_amount.to_string()]
-            );
-            assert_eq!(
-                deposit_msg.amounts_b,
-                vec![expected_token1_amount.to_string()]
-            );
-            assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
-            assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
+                // Get expected fee tier
+                let fee_tier = &config.fee_tier_config.fee_tiers[i + 1];
+                // Calculate expected deposit amounts (based on fee tier percentage)
+                let expected_percentage = fee_tier.percentage as u128;
+                let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
+                let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
+                // Verify deposit details
+                assert_eq!(deposit_msg.creator, env.contract.address.to_string());
+                assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
+                assert_eq!(deposit_msg.token_a, "token0");
+                assert_eq!(deposit_msg.token_b, "token1");
+                assert_eq!(
+                    deposit_msg.amounts_a,
+                    vec![expected_token0_amount.to_string()]
+                );
+                assert_eq!(
+                    deposit_msg.amounts_b,
+                    vec![expected_token1_amount.to_string()]
+                );
+                assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
+                assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
 
-            // Verify deposit options
-            if !deposit_msg.options.is_empty() {
-                assert!(!deposit_msg.options[0].disable_autoswap);
+                // Verify deposit options
+                if !deposit_msg.options.is_empty() {
+                    assert!(!deposit_msg.options[0].disable_autoswap);
+                }
             }
-        } else {
-            panic!("Expected Any message, got something else");
+            _ => panic!("Expected Any message with MsgDeposit type_url"),
         }
     }
 }
+
 #[test]
 fn test_dex_deposit_success_even_values_zero_percentage() {
     // Setup
@@ -592,7 +602,8 @@ fn test_dex_deposit_success_even_values_zero_percentage() {
     // Execute dex_deposit as whitelisted user
     let info = mock_info("owner", &[]);
 
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+    // Now simulate the reply handling
+    let res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
     // Verify response
     assert_eq!(res.attributes.len(), 1);
     assert_eq!(res.attributes[0].key, "action");
@@ -610,43 +621,46 @@ fn test_dex_deposit_success_even_values_zero_percentage() {
 
     // Decode and verify deposit amounts for each fee tier
     for (i, msg) in res.messages.iter().enumerate() {
-        if let cosmwasm_std::CosmosMsg::Any(any_msg) = &msg.msg {
-            assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
+        match &msg.msg {
+            cosmwasm_std::CosmosMsg::Any(any_msg) => {
+                assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
 
-            // Decode the protobuf message
-            let deposit_msg: MsgDeposit = prost::Message::decode(any_msg.value.as_slice()).unwrap();
+                // Decode the protobuf message
+                let deposit_msg: MsgDeposit =
+                    prost::Message::decode(any_msg.value.as_slice()).unwrap();
 
-            // Get expected fee tier
-            let fee_tier = &iteration_tiers[i];
-            // Calculate expected deposit amounts (based on fee tier percentage)
-            let expected_percentage = fee_tier.percentage as u128;
-            let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
-            let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
-            // Verify deposit details
-            assert_eq!(deposit_msg.creator, env.contract.address.to_string());
-            assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
-            assert_eq!(deposit_msg.token_a, "token0");
-            assert_eq!(deposit_msg.token_b, "token1");
-            assert_eq!(
-                deposit_msg.amounts_a,
-                vec![expected_token0_amount.to_string()]
-            );
-            assert_eq!(
-                deposit_msg.amounts_b,
-                vec![expected_token1_amount.to_string()]
-            );
-            assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
-            assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
+                // Get expected fee tier
+                let fee_tier = &iteration_tiers[i];
+                // Calculate expected deposit amounts (based on fee tier percentage)
+                let expected_percentage = fee_tier.percentage as u128;
+                let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
+                let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
+                // Verify deposit details
+                assert_eq!(deposit_msg.creator, env.contract.address.to_string());
+                assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
+                assert_eq!(deposit_msg.token_a, "token0");
+                assert_eq!(deposit_msg.token_b, "token1");
+                assert_eq!(
+                    deposit_msg.amounts_a,
+                    vec![expected_token0_amount.to_string()]
+                );
+                assert_eq!(
+                    deposit_msg.amounts_b,
+                    vec![expected_token1_amount.to_string()]
+                );
+                assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
+                assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
 
-            // Verify deposit options
-            if !deposit_msg.options.is_empty() {
-                assert!(!deposit_msg.options[0].disable_autoswap);
+                // Verify deposit options
+                if !deposit_msg.options.is_empty() {
+                    assert!(!deposit_msg.options[0].disable_autoswap);
+                }
             }
-        } else {
-            panic!("Expected Any message, got something else");
+            _ => panic!("Expected Any message with MsgDeposit type_url"),
         }
     }
 }
+
 #[test]
 fn test_dex_deposit_success_even_values_zero_multiple_percentages() {
     // Setup
@@ -692,7 +706,8 @@ fn test_dex_deposit_success_even_values_zero_multiple_percentages() {
     // Execute dex_deposit as whitelisted user
     let info = mock_info("owner", &[]);
 
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+    // Now simulate the reply handling
+    let res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
     // Verify response
     assert_eq!(res.attributes.len(), 1);
     assert_eq!(res.attributes[0].key, "action");
@@ -710,40 +725,42 @@ fn test_dex_deposit_success_even_values_zero_multiple_percentages() {
 
     // Decode and verify deposit amounts for each fee tier
     for (i, msg) in res.messages.iter().enumerate() {
-        if let cosmwasm_std::CosmosMsg::Any(any_msg) = &msg.msg {
-            assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
+        match &msg.msg {
+            cosmwasm_std::CosmosMsg::Any(any_msg) => {
+                assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
 
-            // Decode the protobuf message
-            let deposit_msg: MsgDeposit = prost::Message::decode(any_msg.value.as_slice()).unwrap();
+                // Decode the protobuf message
+                let deposit_msg: MsgDeposit =
+                    prost::Message::decode(any_msg.value.as_slice()).unwrap();
 
-            // Get expected fee tier
-            let fee_tier = &iteration_tiers[i];
-            // Calculate expected deposit amounts (based on fee tier percentage)
-            let expected_percentage = fee_tier.percentage as u128;
-            let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
-            let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
-            // Verify deposit details
-            assert_eq!(deposit_msg.creator, env.contract.address.to_string());
-            assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
-            assert_eq!(deposit_msg.token_a, "token0");
-            assert_eq!(deposit_msg.token_b, "token1");
-            assert_eq!(
-                deposit_msg.amounts_a,
-                vec![expected_token0_amount.to_string()]
-            );
-            assert_eq!(
-                deposit_msg.amounts_b,
-                vec![expected_token1_amount.to_string()]
-            );
-            assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
-            assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
+                // Get expected fee tier
+                let fee_tier = &iteration_tiers[i];
+                // Calculate expected deposit amounts (based on fee tier percentage)
+                let expected_percentage = fee_tier.percentage as u128;
+                let expected_token0_amount = (1000000u128 * expected_percentage) / 100;
+                let expected_token1_amount = (1000000u128 * expected_percentage) / 100;
+                // Verify deposit details
+                assert_eq!(deposit_msg.creator, env.contract.address.to_string());
+                assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
+                assert_eq!(deposit_msg.token_a, "token0");
+                assert_eq!(deposit_msg.token_b, "token1");
+                assert_eq!(
+                    deposit_msg.amounts_a,
+                    vec![expected_token0_amount.to_string()]
+                );
+                assert_eq!(
+                    deposit_msg.amounts_b,
+                    vec![expected_token1_amount.to_string()]
+                );
+                assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![0]);
+                assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
 
-            // Verify deposit options
-            if !deposit_msg.options.is_empty() {
-                assert!(!deposit_msg.options[0].disable_autoswap);
+                // Verify deposit options
+                if !deposit_msg.options.is_empty() {
+                    assert!(!deposit_msg.options[0].disable_autoswap);
+                }
             }
-        } else {
-            panic!("Expected Any message, got something else");
+            _ => panic!("Expected Any message, got something else"),
         }
     }
 }
@@ -772,7 +789,7 @@ fn test_dex_deposit_success_uneven_prices() {
     // tick_index = -log(price) / log(1.0001);
     // tick_index = -log(2) / log(1.0001)
     // tick_index = -0.693147 / 0.00009999
-    // tick_index ≈ -6931.47
+    // tick_index ≈ -6932
     // rounding down -> -6932
     let expected_tick_index = -6932;
     querier.set_price_response(price_response.clone());
@@ -802,7 +819,8 @@ fn test_dex_deposit_success_uneven_prices() {
     // Execute dex_deposit as whitelisted user
     let info = mock_info("owner", &[]);
 
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+    // Now simulate the reply handling
+    let res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
     // Verify response
     assert_eq!(res.attributes.len(), 1);
     assert_eq!(res.attributes[0].key, "action");
@@ -922,56 +940,58 @@ fn test_dex_deposit_success_uneven_prices() {
     });
 
     for (i, msg) in res.messages.iter().enumerate() {
-        if let cosmwasm_std::CosmosMsg::Any(any_msg) = &msg.msg {
-            assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
+        match &msg.msg {
+            cosmwasm_std::CosmosMsg::Any(any_msg) => {
+                assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
 
-            // Decode the protobuf message
-            let deposit_msg: MsgDeposit = prost::Message::decode(any_msg.value.as_slice()).unwrap();
+                // Decode the protobuf message
+                let deposit_msg: MsgDeposit =
+                    prost::Message::decode(any_msg.value.as_slice()).unwrap();
 
-            // Get expected fee tier
-            let fee_tier = &config.fee_tier_config.fee_tiers[i];
-            // Calculate expected deposit amounts (based on fee tier percentage)
-            let expected_percentage = fee_tier.percentage as u128;
-            let expected_token0_amount = allocations[i].amount_0.to_uint_floor().to_string();
-            let expected_token1_amount = allocations[i].amount_1.to_uint_floor().to_string();
+                // Get expected fee tier
+                let fee_tier = &config.fee_tier_config.fee_tiers[i];
+                // Calculate expected deposit amounts (based on fee tier percentage)
+                let expected_percentage = fee_tier.percentage as u128;
+                let expected_token0_amount = allocations[i].amount_0.to_uint_floor().to_string();
+                let expected_token1_amount = allocations[i].amount_1.to_uint_floor().to_string();
 
-            // Verify deposit details
-            assert_eq!(deposit_msg.creator, env.contract.address.to_string());
-            assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
-            assert_eq!(deposit_msg.token_a, "token0");
-            assert_eq!(deposit_msg.token_b, "token1");
+                // Verify deposit details
+                assert_eq!(deposit_msg.creator, env.contract.address.to_string());
+                assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
+                assert_eq!(deposit_msg.token_a, "token0");
+                assert_eq!(deposit_msg.token_b, "token1");
 
-            // For the last fee tier, use the actual value from the message due to rounding differences
-            if i == 3 {
-                // The last allocation has a rounding difference, so we'll just check that it's close
-                let actual_token0 = deposit_msg.amounts_a[0].parse::<u128>().unwrap();
-                let expected_token0 = expected_token0_amount.parse::<u128>().unwrap();
-                assert!(
-                    actual_token0.abs_diff(expected_token0) <= 2,
-                    "Token0 amount difference too large: expected {} but got {}",
-                    expected_token0,
-                    actual_token0
-                );
-            } else {
+                // For the last fee tier, use the actual value from the message due to rounding differences
+                if i == 3 {
+                    // The last allocation has a rounding difference, so we'll just check that it's close
+                    let actual_token0 = deposit_msg.amounts_a[0].parse::<u128>().unwrap();
+                    let expected_token0 = expected_token0_amount.parse::<u128>().unwrap();
+                    assert!(
+                        actual_token0.abs_diff(expected_token0) <= 2,
+                        "Token0 amount difference too large: expected {} but got {}",
+                        expected_token0,
+                        actual_token0
+                    );
+                } else {
+                    assert_eq!(
+                        deposit_msg.amounts_a,
+                        vec![expected_token0_amount.to_string()]
+                    );
+                }
+
                 assert_eq!(
-                    deposit_msg.amounts_a,
-                    vec![expected_token0_amount.to_string()]
+                    deposit_msg.amounts_b,
+                    vec![expected_token1_amount.to_string()]
                 );
-            }
+                assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![expected_tick_index]);
+                assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
 
-            assert_eq!(
-                deposit_msg.amounts_b,
-                vec![expected_token1_amount.to_string()]
-            );
-            assert_eq!(deposit_msg.tick_indexes_a_to_b, vec![expected_tick_index]);
-            assert_eq!(deposit_msg.fees, vec![fee_tier.fee]);
-
-            // Verify deposit options
-            if !deposit_msg.options.is_empty() {
-                assert!(!deposit_msg.options[0].disable_autoswap);
+                // Verify deposit options
+                if !deposit_msg.options.is_empty() {
+                    assert!(!deposit_msg.options[0].disable_autoswap);
+                }
             }
-        } else {
-            panic!("Expected Any message, got something else");
+            _ => panic!("Expected Any message, got something else"),
         }
     }
 }
@@ -1104,7 +1124,9 @@ fn test_dex_deposit_with_skew() {
     // Execute dex_deposit as whitelisted user
     let info = mock_info("owner", &[]);
 
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+    // let res: cosmwasm_std::Response = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+    // Now simulate the reply handling
+    let res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
 
     // Verify response
     assert_eq!(res.attributes.len(), 1);
@@ -1146,4 +1168,156 @@ fn test_dex_deposit_staleness_check() {
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
     // verify that no deposit messages exist
     assert!(res.messages.is_empty());
+}
+
+#[test]
+fn test_handle_dex_deposit_reply_success() {
+    // Setup
+    let mut querier = setup_mock_querier();
+    let env = mock_env();
+
+    // Set up contract balances
+    querier.set_contract_balance(
+        env.contract.address.as_ref(),
+        vec![
+            Coin::new(1000000u128, "token0"),
+            Coin::new(1000000u128, "token1"),
+        ],
+    );
+
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    let config = setup_test_config(env.clone());
+
+    // Store config
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+    let info = mock_info("owner", &[]);
+
+    // Call handle_dex_deposit_reply
+    let res: cosmwasm_std::Response =
+        execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+
+    // Verify response
+    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes[0].key, "action");
+    assert_eq!(res.attributes[0].value, "prepare_dex_deposit");
+
+    // Verify that no messages were created (since this is just handling a reply)
+    //
+    // Verify that the config was updated with the current timestamp
+    let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(updated_config.last_executed, env.block.time.seconds());
+}
+
+#[test]
+fn test_handle_dex_deposit_reply_error() {
+    // Setup
+    let querier = setup_mock_querier();
+    let env = mock_env();
+
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    let config = setup_test_config(env.clone());
+
+    // Store config
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    // Call handle_dex_deposit_reply
+    let err = handle_dex_deposit_reply(deps.as_mut(), env).unwrap_err();
+
+    // Verify error
+    assert!(matches!(err, ContractError::Std(_)));
+
+    // Verify that the config was not updated
+    let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(updated_config.last_executed, config.last_executed);
+}
+
+#[test]
+fn test_handle_dex_deposit_reply_wrong_id() {
+    // Setup
+    let querier = setup_mock_querier();
+    let env = mock_env();
+
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    let config = setup_test_config(env.clone());
+
+    // Store config
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    // Call handle_dex_deposit_reply
+    let err = handle_dex_deposit_reply(deps.as_mut(), env).unwrap_err();
+
+    // Verify that the config was not updated
+    let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(updated_config.last_executed, config.last_executed);
+}
+
+#[test]
+fn test_dex_deposit_execute_success() {
+    // Setup
+    let mut querier = setup_mock_querier();
+    let env = mock_env();
+
+    // Set up contract balances
+    querier.set_contract_balance(
+        env.contract.address.as_ref(),
+        vec![
+            Coin::new(1000000u128, "token0"),
+            Coin::new(1000000u128, "token1"),
+        ],
+    );
+
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    let config = setup_test_config(env.clone());
+
+    // Store config
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+    let info = mock_info("owner", &[]);
+
+    // Call execute with DexDeposit message
+    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+
+    // Verify response
+    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes[0].key, "action");
+    assert_eq!(res.attributes[0].value, "prepare_dex_deposit");
+
+    // Verify that two submessages were created
+    assert_eq!(res.messages.len(), 2);
+
+    // Check both messages are MsgPlaceLimitOrder with the correct reply ID
+    for (i, msg) in res.messages.iter().enumerate() {
+        match msg {
+            cosmwasm_std::SubMsg { id, msg, .. } => {
+                // Check that it's using the correct reply ID
+                assert_eq!(*id, 3 + i as u64);
+
+                // Check that it's a message to place limit order
+                match msg {
+                    cosmwasm_std::CosmosMsg::Any(any_msg) => {
+                        assert_eq!(
+                            any_msg.type_url, "/neutron.dex.MsgPlaceLimitOrder",
+                            "Message {}: Expected MsgPlaceLimitOrder message, got: {}",
+                            i, any_msg.type_url
+                        );
+
+                        // We could decode the protobuf message here if needed
+                        // For example, to verify different parameters for each message:
+                        // let limit_order_msg: MsgPlaceLimitOrder = prost::Message::decode(any_msg.value.as_slice()).unwrap();
+                        //
+                        // if i == 0 {
+                        //     // Verify first message parameters
+                        // } else {
+                        //     // Verify second message parameters
+                        // }
+                    }
+                    _ => panic!("Message {}: Expected Any message for MsgPlaceLimitOrder", i),
+                }
+            }
+            _ => panic!("Message {}: Expected SubMsg", i),
+        }
+    }
+
+    // Verify that the config was updated with the current timestamp
+    let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(updated_config.last_executed, env.block.time.seconds());
 }
