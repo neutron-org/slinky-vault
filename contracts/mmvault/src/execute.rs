@@ -281,7 +281,7 @@ pub fn dex_withdrawal(
         .add_attribute("action", "dex_withdrawal"))
 }
 
-/// Handle the withdrawal reply. withdraw function will reply if there are active DEX deposits. 
+/// Handle the withdrawal reply. withdraw function will reply if there are active DEX deposits.
 /// This is called as reply once deposits are withdrawn.
 pub fn handle_withdrawal_reply(
     deps: DepsMut,

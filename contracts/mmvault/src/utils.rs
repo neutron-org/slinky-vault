@@ -638,7 +638,7 @@ pub fn flatten_msgs_always_reply(
 }
 
 /// Get the withdrawal messages.
-/// This is used to burn get the message sequence for burning LP tokens and crediting 
+/// This is used to burn get the message sequence for burning LP tokens and crediting
 /// the beneficiary with the proportinal value of the total funds in the contract.
 pub fn get_withdrawal_messages(
     env: &Env,
