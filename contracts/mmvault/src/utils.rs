@@ -32,15 +32,20 @@ pub fn sort_token_data_and_get_pair_id_str(
 pub fn get_prices(deps: Deps, _env: Env) -> ContractResult<CombinedPriceResponse> {
     let config = CONFIG.load(deps.storage)?;
 
-    let prices: CombinedPriceResponse = deps.querier.query_wasm_smart(
-        config.oracle_contract,
-        &serde_json::json!({
-            "get_prices": {
-                "token_a": config.pair_data.token_0,
-                "token_b": config.pair_data.token_1,
-            }
-        }),
-    )?;
+    let prices: CombinedPriceResponse = deps
+        .querier
+        .query_wasm_smart(
+            config.oracle_contract,
+            &serde_json::json!({
+                "get_prices": {
+                    "token_a": config.pair_data.token_0,
+                    "token_b": config.pair_data.token_1,
+                }
+            }),
+        )
+        .map_err(|e| ContractError::OracleError {
+            msg: format!("Failed to query oracle: {}", e),
+        })?;
 
     Ok(prices)
 }
