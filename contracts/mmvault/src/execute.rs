@@ -235,7 +235,7 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     let mut submessages = Vec::new();
 
     // Create submessages with appropriate payload IDs. They need separate payload IDs as we reploy only on the DEX_DEPOSIT_REPLY_ID_2
-    // Both messages need handling because either or both LOs can fail. We need to handle both cases gracefully without reverting 
+    // Both messages need handling because either or both LOs can fail. We need to handle both cases gracefully without reverting
     // and always handle the reply after the last one is received.
     for (i, msg) in prepare_state_messages.into_iter().enumerate() {
         if i == 0 {
@@ -293,7 +293,7 @@ pub fn dex_withdrawal(
         .add_attribute("action", "dex_withdrawal"))
 }
 
-/// Handle the withdrawal reply. withdraw function will reply if there are active DEX deposits. 
+/// Handle the withdrawal reply. withdraw function will reply if there are active DEX deposits.
 /// This is called as reply once deposits are withdrawn.
 pub fn handle_withdrawal_reply(
     deps: DepsMut,
