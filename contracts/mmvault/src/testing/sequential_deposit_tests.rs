@@ -528,3 +528,29 @@ fn test_sequential_deposits_multiple_rounding() {
 
     execute_deposit_sequence(scenarios);
 }
+
+#[test]
+fn test_sequential_deposits_multiple_rounding_small_shares() {
+    // Test with imbalanced token amounts
+    let scenarios = vec![
+        // correctly returns rounded-down mint amount
+        DepositScenario {
+            user: "user1".to_string(),
+            token0_amount: 100,
+            token1_amount: 0,
+            token0_price: "0.00000000001".to_string(),
+            token1_price: "0.999999999999999".to_string(),
+            expected_shares: Some(1),
+        },
+        DepositScenario {
+            user: "user1".to_string(),
+            token0_amount: 199,
+            token1_amount: 0,
+            token0_price: "0.00000000001".to_string(),
+            token1_price: "0.999999999999999".to_string(),
+            expected_shares: Some(1),
+        },
+    ];
+
+    execute_deposit_sequence(scenarios);
+}
