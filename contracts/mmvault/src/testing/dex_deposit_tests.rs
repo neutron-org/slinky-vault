@@ -1264,3 +1264,53 @@ fn test_dex_deposit_execute_success() {
     let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
     assert_eq!(updated_config.last_executed, env.block.time.seconds());
 }
+
+#[test]
+fn test_dex_deposit_with_empty_balances() {
+    // Setup
+    let mut querier = setup_mock_querier();
+    let env = mock_env();
+    let mut config = setup_test_config(env.clone());
+
+    // Set contract balance to zero for both tokens
+    querier.set_contract_balance(
+        env.contract.address.as_ref(),
+        vec![Coin::new(0u128, "token0"), Coin::new(0u128, "token1")],
+    );
+
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    // Execute dex_deposit
+    let info = mock_info("owner", &[]);
+    let res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
+
+    // Verify that no deposit messages were created (no funds to deposit)
+    assert_eq!(res.messages.len(), 0);
+
+    // Verify response attributes
+    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes[0].key, "action");
+    assert_eq!(res.attributes[0].value, "dex_deposit");
+}
+
+#[test]
+fn test_dex_deposit_with_price_error() {
+    // Setup
+    let mut querier = setup_mock_querier();
+    let env = mock_env();
+
+    // Set up querier to return an error for price queries
+    querier.set_price_error(true);
+
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    let config = setup_test_config(env.clone());
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    // Execute dex_deposit
+    let info = mock_info("owner", &[]);
+    let err = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap_err();
+
+    // Verify error is related to price fetching
+    assert!(matches!(err, ContractError::OracleError { .. }));
+}

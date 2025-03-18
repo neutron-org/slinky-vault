@@ -7,8 +7,10 @@ use cosmwasm_std::{
 use neutron_std::types::neutron::dex::{
     DepositRecord, MsgWithdrawalResponse, QueryAllUserDepositsResponse,
 };
+use neutron_std::types::neutron::util::precdec::PrecDec;
 use prost::Message;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 pub fn mock_dependencies_with_custom_querier(
     querier: MockQuerier,
@@ -29,6 +31,7 @@ pub struct MockQuerier {
     contract_balances: HashMap<String, Vec<Coin>>,
     token_supply: HashMap<String, Uint128>,
     withdrawal_sim_response: Option<MsgWithdrawalResponse>,
+    price_error: bool,
 }
 
 impl MockQuerier {
@@ -44,16 +47,13 @@ impl MockQuerier {
         self.stale_price = stale;
     }
 
+    pub fn set_price_error(&mut self, error: bool) {
+        self.price_error = error;
+    }
+
     pub fn set_empty_deposits(&mut self) {
         self.deposits = Some(QueryAllUserDepositsResponse {
             deposits: vec![],
-            pagination: None,
-        });
-    }
-
-    pub fn set_deposits(&mut self, deposits: Vec<DepositRecord>) {
-        self.deposits = Some(QueryAllUserDepositsResponse {
-            deposits,
             pagination: None,
         });
     }
@@ -78,6 +78,10 @@ impl MockQuerier {
     pub fn set_withdrawal_simulation_response(&mut self, response: MsgWithdrawalResponse) {
         self.withdrawal_sim_response = Some(response);
     }
+
+    pub fn get_price_response(&self) -> Option<&CombinedPriceResponse> {
+        self.price_response.as_ref()
+    }
 }
 
 impl Querier for MockQuerier {
@@ -96,6 +100,13 @@ impl Querier for MockQuerier {
             QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
                 // Handle oracle price queries
                 if contract_addr.contains("oracle") {
+                    if self.price_error {
+                        return SystemResult::Err(SystemError::InvalidRequest {
+                            error: "Oracle price query failed".to_string(),
+                            request: bin_request.into(),
+                        });
+                    }
+
                     if let Some(price_response) = &self.price_response {
                         if self.stale_price {
                             // Return a response indicating stale price
@@ -112,6 +123,16 @@ impl Querier for MockQuerier {
                             ));
                         }
                     }
+
+                    let default_price = CombinedPriceResponse {
+                        token_0_price: PrecDec::from_str("1.0").unwrap(),
+                        token_1_price: PrecDec::from_str("1.0").unwrap(),
+                        price_0_to_1: PrecDec::from_str("1.0").unwrap(),
+                    };
+
+                    return SystemResult::Ok(ContractResult::Ok(
+                        to_binary(&default_price).unwrap(),
+                    ));
                 }
                 // Handle dex deposit queries
                 else if String::from_utf8_lossy(msg.as_slice()).contains("user_deposits_all") {
@@ -164,7 +185,6 @@ impl Querier for MockQuerier {
                     });
                     SystemResult::Ok(ContractResult::Ok(to_binary(&bank_response).unwrap()))
                 } else {
-                    // Return zero balance if not found
                     let bank_response = BalanceResponse::new(Coin {
                         denom: denom.clone(),
                         amount: Uint128::zero(),

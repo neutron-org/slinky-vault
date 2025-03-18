@@ -17,6 +17,9 @@ pub enum ContractError {
     #[error("Failed to decode response data")]
     DecodingError,
 
+    #[error("Oracle error: {msg}")]
+    OracleError { msg: String },
+
     #[error("Current block is on hold due to a stale price")]
     BlockOnHold,
 

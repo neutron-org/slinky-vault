@@ -545,3 +545,79 @@ fn test_deposit_multiple_times() {
         .unwrap();
     assert!(minted1 == minted2);
 }
+
+#[test]
+fn test_deposit_with_price_staleness() {
+    // Setup
+    let mut querier = setup_mock_querier();
+    let env = mock_env();
+
+    // Set price to be stale
+    querier.set_price_error(true);
+
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    let config = setup_test_config(env.clone());
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    // Execute deposit
+    let info = mock_info(
+        "user1",
+        &[
+            Coin::new(500000u128, "token0"),
+            Coin::new(500000u128, "token1"),
+        ],
+    );
+
+    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap_err();
+
+    // Verify error is related to stale price
+    assert!(matches!(err, ContractError::OracleError { .. }));
+}
+
+#[test]
+fn test_deposit_with_imbalanced_tokens() {
+    // Setup
+    let mut deps = mock_dependencies_with_custom_querier(setup_mock_querier());
+    let env = mock_env();
+    let mut config = setup_test_config(env.clone());
+    let input_amount_0 = 1000000u128;
+    let input_amount_1 = 100u128;
+    let expected_minted_amount = (input_amount_0 + input_amount_1) * SHARES_MULTIPLIER as u128;
+    config.deposit_cap = Uint128::new(input_amount_0 + input_amount_1);
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    // Execute deposit with highly imbalanced token amounts
+    let info = mock_info(
+        "user1",
+        &[
+            Coin::new(1000000u128, "token0"),
+            Coin::new(100u128, "token1"),
+        ],
+    );
+
+    // Update contract balance to reflect what it would be after the deposit
+    deps.querier.set_contract_balance(
+        env.contract.address.as_ref(),
+        vec![
+            Coin::new(1000000u128, "token0"),
+            Coin::new(100u128, "token1"),
+        ],
+    );
+
+    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap();
+
+    // Verify that the deposit was successful but with adjusted share calculation
+    assert_eq!(res.attributes[0].key, "action");
+    assert_eq!(res.attributes[0].value, "deposit");
+
+    // Extract minted amount and verify it's based on the smaller token amount
+    let minted = res
+        .attributes
+        .iter()
+        .find(|attr| attr.key == "minted_amount")
+        .map(|attr| Uint128::from_str(&attr.value).unwrap())
+        .unwrap();
+
+    // The minted amount should be proportional to the smaller token amount
+    assert!(minted == Uint128::from(expected_minted_amount));
+}
