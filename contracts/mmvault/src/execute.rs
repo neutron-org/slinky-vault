@@ -14,6 +14,7 @@ use neutron_std::types::neutron::util::precdec::PrecDec;
 use neutron_std::types::osmosis::tokenfactory::v1beta1::{MsgCreateDenom, MsgMint};
 use prost::Message;
 
+/// Deposit funds into the contract.
 pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
     // Load the contract configuration
@@ -120,6 +121,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         .add_attribute("minted_amount", amount_to_mint.to_string()))
 }
 
+/// Withdraw funds from the contract by burning LP tokens
 pub fn withdraw(
     deps: DepsMut,
     env: Env,
@@ -193,6 +195,7 @@ pub fn withdraw(
         .add_attribute("action", "withdrawal"))
 }
 
+/// Privilaged function to perform a DEX deposit.
 pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     // Load the contract configuration
     let mut config = CONFIG.load(deps.storage)?;
@@ -243,6 +246,7 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
         .add_attribute("action", "prepare_dex_deposit"))
 }
 
+/// Privilaged function to perform a DEX withdrawal.
 pub fn dex_withdrawal(
     deps: DepsMut,
     env: Env,
@@ -285,6 +289,8 @@ pub fn dex_withdrawal(
         .add_attribute("action", "dex_withdrawal"))
 }
 
+/// Handle the withdrawal reply. withdraw function will reply if there are active DEX deposits. 
+/// This is called as reply once deposits are withdrawn.
 pub fn handle_withdrawal_reply(
     deps: DepsMut,
     env: Env,
@@ -337,6 +343,7 @@ pub fn handle_withdrawal_reply(
     }
 }
 
+/// Privilaged function to create the contract's LP token. Can only be called once.
 pub fn execute_create_token(
     deps: DepsMut,
     env: Env,
@@ -375,6 +382,7 @@ pub fn execute_create_token(
         .add_attribute("denom", full_denom))
 }
 
+/// Handle the create token reply. This is called as reply once the create token message is processed.
 pub fn handle_create_token_reply(
     deps: DepsMut,
     msg_result: SubMsgResult,
@@ -397,6 +405,7 @@ pub fn handle_create_token_reply(
     }
 }
 
+/// Privilaged function to update the contract config.
 pub fn update_config(
     deps: DepsMut,
     _env: Env,

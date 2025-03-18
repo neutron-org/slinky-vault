@@ -92,7 +92,7 @@ pub fn instantiate(
     CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new()
-        .add_attribute("action", "noop")
+        .add_attribute("action", "instantiate")
         .add_attributes([
             attr("owner", format!("{:?}", config.whitelist)),
             attr(
@@ -127,7 +127,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::Deposit { .. } => deposit(deps, _env, info),
         ExecuteMsg::Withdraw { amount } => {
-            // Prevent tokens from being sent with the Withdraw message
+            // Prevent other tokens from being sent with the Withdraw message
             if info.funds.len() != 1 {
                 return Err(ContractError::OnlyLpTokenAllowed);
             }
@@ -144,28 +144,28 @@ pub fn execute(
             withdraw(deps, _env, info, amount)
         }
         ExecuteMsg::DexDeposit { .. } => {
-            // Prevent tokens from being sent with the Withdraw message
+            // Prevent tokens from being sent with the DexDeposit message
             if !info.funds.is_empty() {
                 return Err(ContractError::FundsNotAllowed);
             }
             dex_deposit(deps, _env, info)
         }
         ExecuteMsg::DexWithdrawal { .. } => {
-            // Prevent tokens from being sent with the Withdraw message
+            // Prevent tokens from being sent with the DexWithdrawal message
             if !info.funds.is_empty() {
                 return Err(ContractError::FundsNotAllowed);
             }
             dex_withdrawal(deps, _env, info)
         }
         ExecuteMsg::CreateToken { .. } => {
-            // Prevent tokens from being sent with the Withdraw message
+            // Prevent tokens from being sent with the CreateToken message
             if !info.funds.is_empty() {
                 return Err(ContractError::FundsNotAllowed);
             }
             execute_create_token(deps, _env, info)
         }
         ExecuteMsg::UpdateConfig { update } => {
-            // Prevent tokens from being sent with the Withdraw message
+            // Prevent tokens from being sent with the UpdateConfig message
             if !info.funds.is_empty() {
                 return Err(ContractError::FundsNotAllowed);
             }

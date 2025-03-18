@@ -49,7 +49,7 @@ pub fn get_prices(deps: Deps, _env: Env) -> ContractResult<CombinedPriceResponse
 
     Ok(prices)
 }
-
+/// Get the value of the tokens in USD
 pub fn get_token_value(
     prices: CombinedPriceResponse,
     token0_deposited: Uint128,
@@ -100,6 +100,8 @@ pub fn query_contract_balance(
     Ok(balances)
 }
 
+/// Converts a price to a tick index.
+/// This is used to calculate the tick index for the AMM Deposit.
 pub fn price_to_tick_index(price: PrecDec) -> Result<i64, ContractError> {
     // Ensure the price is greater than 0
     if price.is_zero() || price < PrecDec::zero() {
@@ -125,6 +127,8 @@ pub fn price_to_tick_index(price: PrecDec) -> Result<i64, ContractError> {
     Ok(tick_index.round() as i64)
 }
 
+/// Get the amount of tokens to deposit at the tightest spread.
+/// This is called on the lowest fee-tier, and will return the amount of tokens to deposit.
 pub fn get_deposit_data(
     total_available_0: Uint128,
     total_available_1: Uint128,
@@ -148,6 +152,8 @@ pub fn get_deposit_data(
         .map_err(|_| ContractError::DecimalConversionError)?
         .checked_mul(prices.token_1_price)?;
 
+    // If the value of token0 is greater than token1, then we need to deposit more token0 depending in the `imbalance` config variable.
+    // We calculate the imbalance, and then use that to determine the amount of token0 to deposit.
     let (final_amount_0, final_amount_1) = if value_token_0 > value_token_1 {
         let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(config_imbalance);
 
@@ -158,6 +164,7 @@ pub fn get_deposit_data(
                 .map_err(|_| ContractError::ConversionError)?;
         let final_1 = computed_amount_1;
         (final_0, final_1)
+    // If the value of token1 is greater than token0, then we do the same thing but in the other direction.
     } else if value_token_1 > value_token_0 {
         let imbalance = (value_token_1 - value_token_0) * PrecDec::percent(config_imbalance);
 
@@ -169,30 +176,35 @@ pub fn get_deposit_data(
                 .map_err(|_| ContractError::ConversionError)?;
         (final_0, final_1)
     } else {
+        // if the tokens are it complete balance, return the base deposit percentages of both tokens.
         (computed_amount_0, computed_amount_1)
     };
 
+    // If the amount of token 0 to deposit is greater than the total available, return the total available.
     let final_amount_0 = if final_amount_0 > total_available_0 {
         total_available_0
     } else {
         final_amount_0
     };
 
+    // If the amount of token 1 to deposit is greater than the total available, return the total available.
     let final_amount_1 = if final_amount_1 > total_available_1 {
         total_available_1
     } else {
         final_amount_1
     };
 
+    // Get the total value of the token0 in USD
     let total_value_token_0 = PrecDec::from_atomics(total_available_0, 0)
         .map_err(|_| ContractError::DecimalConversionError)?
         .checked_mul(prices.token_0_price)?;
 
+    // Get the total value of the token1 in USD
     let total_value_token_1 = PrecDec::from_atomics(total_available_1, 0)
         .map_err(|_| ContractError::DecimalConversionError)?
         .checked_mul(prices.token_1_price)?;
 
-    // Calculate adjusted tick index based on token value imbalance
+    // If skew is enabled, calculate the adjusted tick index based on the value imbalance
     let adjusted_tick_index = if skew {
         calculate_adjusted_tick_index(tick_index, fee, total_value_token_0, total_value_token_1)?
     } else {
@@ -277,6 +289,7 @@ pub fn calculate_adjusted_tick_index(
     Ok(base_tick_index + adjustment)
 }
 
+/// Extract the amounts of token0 and token1 from the withdrawal response.
 pub fn extract_withdrawal_amounts(
     result: &SubMsgResponse,
 ) -> Result<(Uint128, Uint128), ContractError> {
@@ -303,6 +316,7 @@ pub fn extract_withdrawal_amounts(
     Ok((amount0, amount1))
 }
 
+/// Extract the denom from the create denom response.
 pub fn extract_denom(result: &SubMsgResponse) -> Result<String, ContractError> {
     let response_data = result
         .msg_responses
@@ -318,6 +332,8 @@ pub fn extract_denom(result: &SubMsgResponse) -> Result<String, ContractError> {
 
     Ok(denom)
 }
+
+/// Get the virtual contract balance. Which includes all the tokens deposited in AMM positions + the tokens available in the contract.
 pub fn get_virtual_contract_balance(
     env: Env,
     deps: &DepsMut,
@@ -369,6 +385,8 @@ pub fn get_virtual_contract_balance(
     Ok((total_amount_0, total_amount_1))
 }
 
+/// Get the amount of shares to mint.
+/// This is used to calculate the mint amount when a user deposits tokens.
 pub fn get_mint_amount(
     config: Config,
     prices: CombinedPriceResponse,
@@ -387,15 +405,19 @@ pub fn get_mint_amount(
         .map_err(|_| ContractError::DecimalConversionError)?
         .checked_mul(prices.token_1_price)?;
 
+    // get the value of the incoming deposit.
     let deposit_value_incoming = deposited_value_token_0
         .checked_add(deposited_value_token_1)
         .unwrap();
+    // get the total value of the existing tokens in the contract.
     let total_value_existing = total_value_token_0
         .checked_add(total_value_token_1)?
         .checked_sub(deposit_value_incoming)?;
 
     if config.total_shares == Uint128::zero() {
-        // Initial deposit - set shares equal to deposit value
+        // Initial deposit - set shares equal to deposit value.
+        // we multiply by the SHARES_MULTIPLIER which sets the standard for the share amount for future deposits.
+        // having a large number of shares allows for more percision.
         total_shares =
             deposit_value_incoming.checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))?;
     } else {
@@ -414,6 +436,7 @@ pub fn get_mint_amount(
     precdec_to_uint128(total_shares)
 }
 
+/// Convert a PrecDec to a Uint128.
 pub fn precdec_to_uint128(precdec: PrecDec) -> Result<Uint128, ContractError> {
     // Check if the value is negative
     if precdec < PrecDec::zero() {
@@ -434,6 +457,8 @@ pub fn precdec_to_uint128(precdec: PrecDec) -> Result<Uint128, ContractError> {
     Ok(as_u128)
 }
 
+/// Get the deposit messages.
+/// This is used to get the deposit messages that will perform AM deposits with the contract funds.
 pub fn get_deposit_messages(
     env: &Env,
     config: Config,
@@ -551,7 +576,7 @@ pub fn get_deposit_messages(
             });
             messages.push(dex_msg);
         } else {
-            // Calculate exact amount based on percentage
+            // Calculate exact amount based on percentage. We scale this so we get the exact amounts.
             let amount_0 = total_amount0_to_distribute
                 .multiply_ratio(fee_tier.percentage as u128, remaining_percentages as u128);
             let amount_1 = total_amount1_to_distribute
@@ -612,6 +637,9 @@ pub fn flatten_msgs_always_reply(
     Ok(submsgs)
 }
 
+/// Get the withdrawal messages.
+/// This is used to burn get the message sequence for burning LP tokens and crediting 
+/// the beneficiary with the proportinal value of the total funds in the contract.
 pub fn get_withdrawal_messages(
     env: &Env,
     deps: &DepsMut,
