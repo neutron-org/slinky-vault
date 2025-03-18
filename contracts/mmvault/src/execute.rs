@@ -228,11 +228,15 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     let prices: crate::msg::CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
     let tick_index = price_to_tick_index(prices.price_0_to_1)?;
 
+    // prepare the state for the AMM Deposit.
     let prepare_state_messages = prepare_state(&deps, &env, &config, tick_index, prices.clone())?;
 
     // Create submessages with appropriate payload IDs
     let mut submessages = Vec::new();
 
+    // Create submessages with appropriate payload IDs. They need separate payload IDs as we reploy only on the DEX_DEPOSIT_REPLY_ID_2
+    // Both messages need handling because either or both LOs can fail. We need to handle both cases gracefully without reverting 
+    // and always handle the reply after the last one is received.
     for (i, msg) in prepare_state_messages.into_iter().enumerate() {
         if i == 0 {
             submessages.push(SubMsg::reply_always(msg, DEX_DEPOSIT_REPLY_ID_1));
@@ -505,6 +509,8 @@ pub fn update_config(
         .add_attribute("lp_denom", config.lp_denom))
 }
 
+/// Handle the dex deposit reply. Once the final Limit Order reply is received by the reply handler,
+/// we can create the deposit messages safely knowing that the AMM deposits won't be Behind Enemy Lines.
 pub fn handle_dex_deposit_reply(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 

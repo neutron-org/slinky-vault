@@ -753,6 +753,9 @@ pub fn check_staleness(
     Ok(None)
 }
 
+/// Prepare the state for the AMM Deposit.
+/// It will perform a limit order deposit at the tightest spread to ensure no liquidity is placed behind enemy lines.
+/// if there is liquidity behind enemy lines, this LO will either fully clear it or exhause the token reserves of the contract in the attempt.
 pub fn prepare_state(
     deps: &DepsMut,
     env: &Env,
