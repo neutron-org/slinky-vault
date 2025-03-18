@@ -469,16 +469,16 @@ fn test_sequential_withdrawals_rounding() {
             withdraw_amount: 999999, // will not return the tokens
             token0_price: "1.0".to_string(),
             token1_price: "1.0".to_string(),
-            expected_token0: Some(0), // 25% of token0
-            expected_token1: Some(0), // 25% of token1
+            expected_token0: Some(0),
+            expected_token1: Some(0),
         },
         WithdrawScenario {
             user: "user1".to_string(),
             withdraw_amount: 1, // one share remaining should return the token
             token0_price: "1.0".to_string(),
             token1_price: "1.0".to_string(),
-            expected_token0: Some(1), // 25% of token0
-            expected_token1: Some(1), // 25% of token1
+            expected_token0: Some(1),
+            expected_token1: Some(1),
         },
     ];
 
@@ -498,74 +498,74 @@ fn test_sequential_withdrawals_multiple_rounding() {
             withdraw_amount: 199999, // will return 1 token
             token0_price: "1.0".to_string(),
             token1_price: "1.0".to_string(),
-            expected_token0: Some(1), // 25% of token0
-            expected_token1: Some(1), // 25% of token1
+            expected_token0: Some(1),
+            expected_token1: Some(1),
         },
         // remaining shares is 800001
         // remaining tokens are 9
         WithdrawScenario {
             user: "user1".to_string(),
-            withdraw_amount: 80000, // will return 1 token
+            withdraw_amount: 80000, // will return 0 token
             token0_price: "1.0".to_string(),
             token1_price: "1.0".to_string(),
-            expected_token0: Some(0), // 25% of token0
-            expected_token1: Some(0), // 25% of token1
+            expected_token0: Some(0),
+            expected_token1: Some(0),
         },
         // remaining shares is 720001
         // remaining tokens are 9
         WithdrawScenario {
             user: "user1".to_string(),
-            withdraw_amount: 80000, // will return 1 token
+            withdraw_amount: 80000, // will return 0 tokens
             token0_price: "1.0".to_string(),
             token1_price: "1.0".to_string(),
-            expected_token0: Some(0), // 25% of token0
-            expected_token1: Some(0), // 25% of token1
+            expected_token0: Some(0),
+            expected_token1: Some(0),
         },
         // remaining shares is 640001
         // remaining tokens are 9
         WithdrawScenario {
             user: "user1".to_string(),
-            withdraw_amount: 60000, // will return 1 token
+            withdraw_amount: 60000, // will return 0 tokens
             token0_price: "1.0".to_string(),
             token1_price: "1.0".to_string(),
-            expected_token0: Some(0), // 25% of token0
-            expected_token1: Some(0), // 25% of token1
+            expected_token0: Some(0),
+            expected_token1: Some(0),
         },
         // remaining shares is 580001
         // remaining tokens are 9
         WithdrawScenario {
             user: "user1".to_string(),
-            withdraw_amount: 50000, // will return 1 token
+            withdraw_amount: 50000, // will return 0 tokens
             token0_price: "1.0".to_string(),
             token1_price: "1.0".to_string(),
-            expected_token0: Some(0), // 25% of token0
-            expected_token1: Some(0), // 25% of token1
+            expected_token0: Some(0),
+            expected_token1: Some(0),
         },
         // remaining shares is 580001 - 50000 = 530001
         // remaining tokens are 9
         WithdrawScenario {
             user: "user1".to_string(),
-            withdraw_amount: 48000, // will return 1 token
+            withdraw_amount: 48000, // will return 0 tokens
             token0_price: "1.0".to_string(),
             token1_price: "1.0".to_string(),
-            expected_token0: Some(0), // 25% of token0
-            expected_token1: Some(0), // 25% of token1
+            expected_token0: Some(0),
+            expected_token1: Some(0),
         },
         // remaining shares is 530001 - 48000 = 482001
         // remaining tokens are 9
         WithdrawScenario {
             user: "user1".to_string(),
-            withdraw_amount: 482000, // will return 1 token
+            withdraw_amount: 482000, // will return 8 token, 1 share remainder
             token0_price: "1.0".to_string(),
             token1_price: "1.0".to_string(),
-            expected_token0: Some(8), // 25% of token0
-            expected_token1: Some(8), // 25% of token1
+            expected_token0: Some(8),
+            expected_token1: Some(8),
         },
         // remaining shares is 530001 - 48000 = 482001
         // remaining tokens are 9
         WithdrawScenario {
             user: "user1".to_string(),
-            withdraw_amount: 1, // will return 1 token
+            withdraw_amount: 1, // single share remainder will return 1 token
             token0_price: "1.0".to_string(),
             token1_price: "1.0".to_string(),
             expected_token0: Some(1), // 25% of token0
