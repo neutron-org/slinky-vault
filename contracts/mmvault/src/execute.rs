@@ -293,7 +293,12 @@ pub fn handle_withdrawal_reply(
     match msg_result {
         SubMsgResult::Ok(_result) => {
             let mut messages: Vec<CosmosMsg> = vec![];
-            let config = CONFIG.load(deps.storage)?;
+            let mut config = CONFIG.load(deps.storage)?;
+
+            // reduce total shares by the amount burned
+            config.total_shares = config.total_shares.checked_sub(burn_amount)?;
+            CONFIG.save(deps.storage, &config)?;
+
             // we know there are no deposits here, so we can query the contract balance directly
             let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
 
