@@ -429,11 +429,12 @@ pub fn get_mint_amount(
             .map_err(|_| ContractError::ConversionError)?;
     }
 
-    if total_shares.is_zero() {
+    let shares_u128 = precdec_to_uint128(total_shares)?;
+
+    if shares_u128.is_zero() {
         return Err(ContractError::InvalidTokenAmount);
     }
-
-    precdec_to_uint128(total_shares)
+    Ok(shares_u128)
 }
 
 /// Convert a PrecDec to a Uint128.
