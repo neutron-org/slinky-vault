@@ -6,7 +6,7 @@ use crate::state::{
 };
 use crate::utils::*;
 use cosmwasm_std::{
-    Addr, Binary, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult,
+    attr, Addr, Binary, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult,
     Uint128,
 };
 use neutron_std::types::neutron::dex::{DexQuerier, MsgWithdrawal, QueryAllUserDepositsResponse};
@@ -118,7 +118,8 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         .add_messages(messages)
         .add_attribute("action", "deposit")
         .add_attribute("from", info.sender.to_string())
-        .add_attribute("minted_amount", amount_to_mint.to_string()))
+        .add_attribute("minted_amount", amount_to_mint.to_string())
+        .add_attribute("total_shares", config.total_shares.to_string()))
 }
 
 /// Withdraw funds from the contract by burning LP tokens
@@ -182,7 +183,9 @@ pub fn withdraw(
             .add_messages(messages)
             .add_attribute("action", "withdrawal")
             .add_attribute("withdraw_amount_0", withdraw_amount_0.to_string())
-            .add_attribute("withdraw_amount_1", withdraw_amount_1.to_string()));
+            .add_attribute("withdraw_amount_1", withdraw_amount_1.to_string())
+            .add_attribute("shares_burned", amount.to_string())
+            .add_attribute("total_shares", config.total_shares.to_string()));
     }
 
     // Handle withdrawal from existing deposits
@@ -334,7 +337,7 @@ pub fn handle_withdrawal_reply(
             // Create deposit messages
             let deposit_msgs = get_deposit_messages(
                 &env,
-                config,
+                config.clone(),
                 tick_index,
                 prices,
                 balances[0].amount - withdraw_amount_0,
@@ -344,7 +347,11 @@ pub fn handle_withdrawal_reply(
             Ok(Response::new()
                 .add_messages(messages)
                 .add_attribute("action", "withdrawal_reply_success")
-                .add_attribute("next_action", "create_new_deposit"))
+                .add_attribute("next_action", "create_new_deposit")
+                .add_attribute("withdrawn_token_0", withdraw_amount_0.to_string())
+                .add_attribute("withdrawn_token_1", withdraw_amount_1.to_string())
+                .add_attribute("shares_burned", burn_amount.to_string())
+                .add_attribute("total_shares", config.total_shares.to_string()))
         }
         SubMsgResult::Err(err) => Ok(Response::new()
             .add_attribute("action", "withdrawal_reply_error")
@@ -422,6 +429,7 @@ pub fn update_config(
     update: ConfigUpdateMsg,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
+    let mut attrs = vec![];
 
     if !config.whitelist.contains(&info.sender) {
         return Err(ContractError::Unauthorized {});
@@ -433,16 +441,25 @@ pub fn update_config(
             .iter()
             .map(|addr| deps.api.addr_validate(addr).map_err(ContractError::Std))
             .collect::<Result<Vec<Addr>, ContractError>>()?;
-        config.whitelist = whitelist;
+        config.whitelist = whitelist.clone();
+        attrs.push(attr("whitelist", format!("{:?}", whitelist)));
     }
 
     // Update max_blocks_old if provided
     if let Some(max_blocks_old_token_a) = update.max_blocks_old_token_a {
         config.pair_data.token_0.max_blocks_old = max_blocks_old_token_a;
+        attrs.push(attr(
+            "max_blocks_old_token_a",
+            max_blocks_old_token_a.to_string(),
+        ));
     }
 
     if let Some(max_blocks_old_token_b) = update.max_blocks_old_token_b {
         config.pair_data.token_1.max_blocks_old = max_blocks_old_token_b;
+        attrs.push(attr(
+            "max_blocks_old_token_b",
+            max_blocks_old_token_b.to_string(),
+        ));
     }
 
     // Update deposit_cap if provided
@@ -458,6 +475,7 @@ pub fn update_config(
             });
         }
         config.timestamp_stale = timestamp_stale;
+        attrs.push(attr("timestamp_stale", timestamp_stale.to_string()));
     }
 
     // Update fee_tier_config if provided
@@ -472,19 +490,23 @@ pub fn update_config(
                 reason: "Total fee tier percentages must add to 100%".to_string(),
             });
         }
-        config.fee_tier_config = fee_tier_config;
+        config.fee_tier_config = fee_tier_config.clone();
+        attrs.push(attr("fee_tier_config", fee_tier_config.to_string()));
     }
 
     if let Some(paused) = update.paused {
         config.paused = paused;
+        attrs.push(attr("paused", paused.to_string()));
     }
 
     if let Some(skew) = update.skew {
         config.skew = skew;
+        attrs.push(attr("skew", skew.to_string()));
     }
 
     if let Some(imbalance) = update.imbalance {
         config.imbalance = imbalance;
+        attrs.push(attr("imbalance", imbalance.to_string()));
     }
 
     if let Some(oracle_contract) = update.oracle_contract {
@@ -492,6 +514,7 @@ pub fn update_config(
             .api
             .addr_validate(&oracle_contract)
             .map_err(ContractError::Std)?;
+        attrs.push(attr("oracle_contract", oracle_contract.to_string()));
     }
 
     // Save updated config
@@ -499,19 +522,7 @@ pub fn update_config(
 
     Ok(Response::new()
         .add_attribute("action", "update_config")
-        .add_attribute("owner", format!("{:?}", config.whitelist))
-        .add_attribute(
-            "max_blocks_old_token_a",
-            config.pair_data.token_0.max_blocks_old.to_string(),
-        )
-        .add_attribute(
-            "max_blocks_old_token_b",
-            config.pair_data.token_1.max_blocks_old.to_string(),
-        )
-        .add_attribute("deposit_cap", config.deposit_cap.to_string())
-        .add_attribute("timestamp_stale", config.timestamp_stale.to_string())
-        .add_attribute("total_shares", config.total_shares.to_string())
-        .add_attribute("lp_denom", config.lp_denom))
+        .add_attributes(attrs))
 }
 
 /// Handle the dex deposit reply. Once the final Limit Order reply is received by the reply handler,
@@ -533,5 +544,7 @@ pub fn handle_dex_deposit_reply(deps: DepsMut, env: Env) -> Result<Response, Con
     )?;
     Ok(Response::new()
         .add_messages(messages)
-        .add_attribute("action", "dex_deposit"))
+        .add_attribute("action", "dex_deposit")
+        .add_attribute("token_0_balance", balances[0].amount.to_string())
+        .add_attribute("token_1_balance", balances[1].amount.to_string()))
 }

@@ -140,7 +140,7 @@ fn test_withdraw_success_no_active_deposits() {
     .unwrap();
 
     // Verify response
-    assert_eq!(res.attributes.len(), 3);
+    assert_eq!(res.attributes.len(), 5);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "withdrawal");
 
@@ -659,7 +659,7 @@ fn test_withdrawal_reply_handler_partial_withdrawal() {
     .unwrap();
 
     // Verify response
-    assert_eq!(res.attributes.len(), 2);
+    assert_eq!(res.attributes.len(), 6);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "withdrawal_reply_success");
     assert_eq!(res.attributes[1].key, "next_action");
@@ -791,7 +791,7 @@ fn test_withdrawal_reply_handler_full_withdrawal() {
     .unwrap();
 
     // Verify response
-    assert_eq!(res.attributes.len(), 2);
+    assert_eq!(res.attributes.len(), 6);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "withdrawal_reply_success");
     assert_eq!(res.attributes[1].key, "next_action");

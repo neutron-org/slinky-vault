@@ -40,6 +40,12 @@ pub struct FeeTierConfig {
     pub fee_tiers: Vec<FeeTier>,
 }
 
+impl std::fmt::Display for FeeTierConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.fee_tiers)
+    }
+}
+
 /// This structure stores the concentrated pair parameters.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
