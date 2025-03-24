@@ -137,7 +137,7 @@ fn test_deposit_success() {
     .unwrap();
 
     // Verify response
-    assert_eq!(res.attributes.len(), 3);
+    assert_eq!(res.attributes.len(), 4);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "deposit");
     assert_eq!(res.attributes[1].key, "from");

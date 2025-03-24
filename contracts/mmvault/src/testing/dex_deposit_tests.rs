@@ -115,7 +115,7 @@ fn test_dex_deposit_success_even_values_1_fee_tier() {
 
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
     // Verify response
-    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes.len(), 3);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
@@ -205,7 +205,7 @@ fn test_dex_deposit_success_even_values_2_fee_tiers() {
 
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
     // Verify response
-    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes.len(), 3);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
@@ -285,7 +285,7 @@ fn test_dex_deposit_success_even_values_3_fee_tiers() {
 
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
     // Verify response
-    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes.len(), 3);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
@@ -383,7 +383,7 @@ fn test_dex_deposit_success_even_values_4_fee_tiers() {
 
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
     // Verify response
-    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes.len(), 3);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
@@ -481,7 +481,7 @@ fn test_dex_deposit_success_even_values_zero_first_percentage() {
 
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
     // Verify response
-    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes.len(), 3);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
@@ -594,7 +594,7 @@ fn test_dex_deposit_success_even_values_zero_percentage() {
 
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
     // Verify response
-    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes.len(), 3);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
@@ -694,7 +694,7 @@ fn test_dex_deposit_success_even_values_zero_multiple_percentages() {
 
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
     // Verify response
-    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes.len(), 3);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
@@ -803,7 +803,7 @@ fn test_dex_deposit_success_uneven_prices() {
 
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
     // Verify response
-    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes.len(), 3);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
@@ -1106,7 +1106,7 @@ fn test_dex_deposit_with_skew() {
     let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
 
     // Verify response
-    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes.len(), 3);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_deposit");
 
@@ -1171,7 +1171,7 @@ fn test_dex_deposit_with_empty_balances() {
     assert_eq!(res.messages.len(), 0);
 
     // Verify response attributes
-    assert_eq!(res.attributes.len(), 1);
+    assert_eq!(res.attributes.len(), 3);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "dex_deposit");
 }

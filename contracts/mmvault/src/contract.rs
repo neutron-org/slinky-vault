@@ -89,7 +89,7 @@ pub fn instantiate(
     CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new()
-        .add_attribute("action", "instantiate")
+        .add_attribute("action", "instantiate IMM")
         .add_attributes([
             attr("owner", format!("{:?}", config.whitelist)),
             attr(
@@ -107,6 +107,12 @@ pub fn instantiate(
             attr("token_1_symbol", pairs.token_1.pair.base),
             attr("token_1_quote_currency", pairs.token_1.pair.quote),
             attr("pool_id", pairs.pair_id),
+            attr("deposit_cap", config.deposit_cap.to_string()),
+            attr("oracle_contract", config.oracle_contract.to_string()),
+            attr("imbalance", config.imbalance.to_string()),
+            attr("fee_tier_config", config.fee_tier_config.to_string()),
+            attr("timestamp_stale", config.timestamp_stale.to_string()),
+            attr("paused", config.paused.to_string()),
         ]))
 }
 
