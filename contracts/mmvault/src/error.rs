@@ -95,6 +95,9 @@ pub enum ContractError {
     #[error("Attempted deposit of invalid token amount")]
     InvalidTokenAmount,
 
+    #[error("Attempted mint of invalid token amount")]
+    InvalidTokenMintAmount,
+
     #[error("Attempted withdraw of invalid token amount")]
     InvalidWithdrawAmount,
 

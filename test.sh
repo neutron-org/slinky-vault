@@ -128,10 +128,10 @@ get_lp_balance() {
 execute_contract() {
     local contract_addr="$1"
     local msg="$2"
-    local amount="$3"                   # Make sure we capture the amount parameter
-    local from_account="${4:-$account}" # Use provided account or default to $account
+    local amount="$3"                   
+    local from_account="${4:-$account}" 
     
-    # Add debug output
+    # Debug output with more details
     print_info "Debug: execute_contract called with:"
     print_info "  contract_addr: $contract_addr"
     print_info "  msg: $msg"
@@ -141,28 +141,33 @@ execute_contract() {
     # Execute the transaction and capture the response
     local resp
     if [ -n "$amount" ]; then
-        print_info "Debug: Executing with amount"
-        resp=$(neutrond tx wasm execute "$contract_addr" "$msg" --amount "$amount" \
+        # Make sure there are no spaces in the amount string
+        amount=$(echo "$amount" | tr -d ' ')
+        print_info "Sending with amount: $amount"
+        
+        resp=$(neutrond tx wasm execute "$contract_addr" "$msg" \
+            --amount "$amount" \
             --from "$from_account" \
             --chain-id "$chain_id" \
             --gas-prices "$gas_price" \
             --gas-adjustment "$gas_adjustment" \
             --gas auto \
+            --node "$node" \
             --yes \
             --output json)
     else
-        print_info "Debug: Executing without amount"
         resp=$(neutrond tx wasm execute "$contract_addr" "$msg" \
             --from "$from_account" \
             --chain-id "$chain_id" \
             --gas-prices "$gas_price" \
             --gas-adjustment "$gas_adjustment" \
             --gas auto \
+            --node "$node" \
             --yes \
             --output json)
     fi
 
-    # Check if the transaction was successful
+    # Check if the transaction was successful and provide detailed error information
     local tx_hash=$(echo "$resp" | jq -r ".txhash")
     if [ -n "$tx_hash" ]; then
         if [ "$SHOW_TX_HASH" = true ]; then
@@ -171,14 +176,44 @@ execute_contract() {
         wait_for_tx
         # Query the transaction result
         local tx_result=$(neutrond q tx "$tx_hash" --node "$node" --output json)
-        if [ "$(echo "$tx_result" | jq -r .code)" != "0" ]; then
-            print_error "Transaction failed: $(echo "$tx_result" | jq -r .raw_log)"
+        local code=$(echo "$tx_result" | jq -r .code)
+        if [ "$code" != "0" ]; then
+            local raw_log=$(echo "$tx_result" | jq -r .raw_log)
+            print_error "Transaction failed with code $code: $raw_log"
+            return 1
         fi
     else
         print_error "Failed to execute transaction: $resp"
+        return 1
+    fi
+    
+    return 0
+}
+# Add this function to check the contract configuration
+check_contract_config() {
+    print_section "CHECKING CONTRACT CONFIGURATION"
+    
+    local config=$(query_contract $contract_address '{"get_config":{}}')
+    print_info "Contract configuration:"
+    echo "$config" | jq .
+    
+    # Extract token information
+    local token_a_denom=$(echo "$config" | jq -r '.data.token_a.denom // .data.pair_data.token_0.denom')
+    local token_b_denom=$(echo "$config" | jq -r '.data.token_b.denom // .data.pair_data.token_1.denom')
+    
+    print_info "Expected token denominations:"
+    print_info "Token A: $token_a_denom"
+    print_info "Token B: $token_b_denom"
+    
+    # Check if the global variables match the contract config
+    if [ "$token_a" != "$token_a_denom" ] && [ -n "$token_a_denom" ]; then
+        print_error "Global token_a ($token_a) doesn't match contract config ($token_a_denom)"
+    fi
+    
+    if [ "$token_b" != "$token_b_denom" ] && [ -n "$token_b_denom" ]; then
+        print_error "Global token_b ($token_b) doesn't match contract config ($token_b_denom)"
     fi
 }
-
 place_limit_order() {
     local base_denom=$1
     local quote_denom=$2
@@ -870,13 +905,13 @@ main() {
 
     # Setup
     setup_suite
-
+check_contract_config
     query_contract $contract_address '{"get_config":{}}' --output json
     neutrond q bank balances $account --node $node
-    execute_contract $contract_address '{"deposit":{}}' "940000000uibcusdc"
+    execute_contract $contract_address '{"deposit":{}}' "100000000untrn"
     neutrond q bank balances $account --node $node
     neutrond q bank balances $contract_address --node $node
-    execute_contract $contract_address '{"deposit":{}}' "940000000uibcusdc"
+    execute_contract $contract_address '{"deposit":{}}' "100000000untrn"
     neutrond q bank balances $account --node $node
     neutrond q bank balances $contract_address --node $node
     query_contract $contract_address '{"get_config":{}}' --output json

@@ -6,8 +6,8 @@ use cosmwasm_std::{
     QueryRequest, ReplyOn, Response, SubMsg, SubMsgResponse, Uint128,
 };
 use neutron_std::types::neutron::dex::{
-    DepositOptions, DexQuerier, MsgDeposit, MsgWithdrawal, MsgWithdrawalResponse,
-    QueryAllUserDepositsResponse,
+    DepositOptions, DexQuerier, LimitOrderType, MsgDeposit, MsgPlaceLimitOrder, MsgWithdrawal,
+    MsgWithdrawalResponse, QueryAllUserDepositsResponse,
 };
 use neutron_std::types::neutron::util::precdec::PrecDec;
 use neutron_std::types::osmosis::tokenfactory::v1beta1::MsgBurn;
@@ -429,11 +429,12 @@ pub fn get_mint_amount(
             .map_err(|_| ContractError::ConversionError)?;
     }
 
-    if total_shares.is_zero() {
+    let shares_u128 = precdec_to_uint128(total_shares)?;
+
+    if shares_u128.is_zero() {
         return Err(ContractError::InvalidTokenAmount);
     }
-
-    precdec_to_uint128(total_shares)
+    Ok(shares_u128)
 }
 
 /// Convert a PrecDec to a Uint128.
@@ -751,4 +752,65 @@ pub fn check_staleness(
 
     // The caller will save the config
     Ok(None)
+}
+
+/// Prepare the state for the AMM Deposit.
+/// It will perform a limit order deposit at the tightest spread to ensure no liquidity is placed behind enemy lines.
+/// if there is liquidity behind enemy lines, this LO will either fully clear it or exhause the token reserves of the contract in the attempt.
+pub fn prepare_state(
+    deps: &DepsMut,
+    env: &Env,
+    config: &Config,
+    index: i64,
+    prices: crate::msg::CombinedPriceResponse,
+) -> Result<Vec<CosmosMsg>, ContractError> {
+    let mut messages: Vec<CosmosMsg> = vec![];
+    let target_tick_index_0 = index + config.fee_tier_config.fee_tiers[0].fee as i64;
+    let target_tick_index_1 = -index + config.fee_tier_config.fee_tiers[0].fee as i64;
+
+    let balances = query_contract_balance(deps, env.clone(), config.pair_data.clone())?;
+    let token_0_usable = balances[0].amount;
+    let token_1_usable = balances[1].amount;
+
+    // First limit order simulation (token 0 -> token 1)
+    let limit_order_msg_token_0 = MsgPlaceLimitOrder {
+        creator: env.contract.address.to_string(),
+        receiver: env.contract.address.to_string(),
+        token_in: config.pair_data.token_0.denom.clone(),
+        token_out: config.pair_data.token_1.denom.clone(),
+        tick_index_in_to_out: target_tick_index_0,
+        amount_in: token_0_usable.to_string(),
+        order_type: LimitOrderType::ImmediateOrCancel.into(),
+        expiration_time: None,
+        max_amount_out: None,
+        limit_sell_price: None,
+        min_average_sell_price: Some(
+            prices
+                .token_0_price
+                .checked_mul(PrecDec::percent(90))?
+                .to_prec_dec_string(),
+        ),
+    };
+    messages.push(limit_order_msg_token_0.into());
+    // Second limit order simulation (token 1 -> token 0)
+    let limit_order_msg_token_1 = MsgPlaceLimitOrder {
+        creator: env.contract.address.to_string(),
+        receiver: env.contract.address.to_string(),
+        token_in: config.pair_data.token_1.denom.clone(),
+        token_out: config.pair_data.token_0.denom.clone(),
+        tick_index_in_to_out: target_tick_index_1,
+        amount_in: token_1_usable.to_string(),
+        order_type: LimitOrderType::ImmediateOrCancel.into(),
+        expiration_time: None,
+        max_amount_out: None,
+        limit_sell_price: None,
+        min_average_sell_price: Some(
+            prices
+                .token_1_price
+                .checked_mul(PrecDec::percent(90))?
+                .to_prec_dec_string(),
+        ),
+    };
+    messages.push(limit_order_msg_token_1.into());
+    Ok(messages)
 }

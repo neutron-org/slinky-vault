@@ -593,8 +593,7 @@ fn test_update_config_all_fields() {
 
     // Check whitelist
     if let Some(whitelist) = &update_msg.whitelist {
-        let expected_whitelist: Vec<Addr> =
-            whitelist.iter().map(|addr| Addr::unchecked(addr)).collect();
+        let expected_whitelist: Vec<Addr> = whitelist.iter().map(Addr::unchecked).collect();
         assert_ne!(
             initial_config.whitelist, expected_whitelist,
             "Whitelist was not updated"

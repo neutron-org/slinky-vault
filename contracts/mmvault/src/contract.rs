@@ -2,7 +2,10 @@ use crate::error::{ContractError, ContractResult};
 use crate::execute::*;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload};
 use crate::query::*;
-use crate::state::{Config, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, WITHDRAW_REPLY_ID};
+use crate::state::{
+    Config, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_ID_1,
+    DEX_DEPOSIT_REPLY_ID_2, WITHDRAW_REPLY_ID,
+};
 use crate::utils::*;
 use cosmwasm_std::{
     attr, entry_point, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Uint128,
@@ -89,7 +92,7 @@ pub fn instantiate(
     CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new()
-        .add_attribute("action", "instantiate")
+        .add_attribute("action", "instantiate IMM")
         .add_attributes([
             attr("owner", format!("{:?}", config.whitelist)),
             attr(
@@ -107,6 +110,12 @@ pub fn instantiate(
             attr("token_1_symbol", pairs.token_1.pair.base),
             attr("token_1_quote_currency", pairs.token_1.pair.quote),
             attr("pool_id", pairs.pair_id),
+            attr("deposit_cap", config.deposit_cap.to_string()),
+            attr("oracle_contract", config.oracle_contract.to_string()),
+            attr("imbalance", config.imbalance.to_string()),
+            attr("fee_tier_config", config.fee_tier_config.to_string()),
+            attr("timestamp_stale", config.timestamp_stale.to_string()),
+            attr("paused", config.paused.to_string()),
         ]))
 }
 
@@ -214,6 +223,30 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
                 Uint128::from_str(&payload.amount).map_err(|_| ContractError::ParseError)?;
 
             handle_withdrawal_reply(deps, env, msg.result, amount, payload.sender)
+        }
+        DEX_DEPOSIT_REPLY_ID_1 => {
+            // Gracefully handle errors for the first reply
+            if let Err(err) = msg.result.clone().into_result() {
+                // Log the error but don't propagate it
+                return Ok(Response::new()
+                    .add_attribute("action", "dex_deposit_reply_1")
+                    .add_attribute("status", "error_handled")
+                    .add_attribute("error", format!("{:?}", err)));
+            }
+            // If successful, just return an empty response
+            Ok(Response::new()
+                .add_attribute("action", "dex_deposit_reply_1")
+                .add_attribute("status", "success"))
+        }
+        DEX_DEPOSIT_REPLY_ID_2 => {
+            // Call handle_dex_deposit_reply and handle its result
+            match handle_dex_deposit_reply(deps, env) {
+                Ok(response) => Ok(response),
+                Err(err) => {
+                    // If handle_dex_deposit_reply fails, return an error
+                    Err(err)
+                }
+            }
         }
         id => Err(ContractError::UnknownReplyId { id }),
     }
