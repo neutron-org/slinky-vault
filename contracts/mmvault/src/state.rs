@@ -8,6 +8,7 @@ pub const CREATE_TOKEN_REPLY_ID: u64 = 1;
 pub const WITHDRAW_REPLY_ID: u64 = 2;
 pub const DEX_DEPOSIT_REPLY_ID_1: u64 = 3;
 pub const DEX_DEPOSIT_REPLY_ID_2: u64 = 4;
+pub const DEX_DEPOSIT_REPLY_HANDLER_REPLY_ID: u64 = 5;
 pub const SHARES_MULTIPLIER: u64 = 1000000000;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]

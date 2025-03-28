@@ -1,8 +1,8 @@
 use crate::error::ContractError;
 use crate::msg::{CombinedPriceResponse, ConfigUpdateMsg, WithdrawPayload};
 use crate::state::{
-    CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_ID_1, DEX_DEPOSIT_REPLY_ID_2,
-    WITHDRAW_REPLY_ID,
+    CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_HANDLER_REPLY_ID, DEX_DEPOSIT_REPLY_ID_1,
+    DEX_DEPOSIT_REPLY_ID_2, WITHDRAW_REPLY_ID,
 };
 use crate::utils::*;
 use cosmwasm_std::{
@@ -542,8 +542,14 @@ pub fn handle_dex_deposit_reply(deps: DepsMut, env: Env) -> Result<Response, Con
         balances[0].amount,
         balances[1].amount,
     )?;
+
+    let submessages: Vec<SubMsg> = messages
+        .into_iter()
+        .map(|msg| SubMsg::reply_always(msg, DEX_DEPOSIT_REPLY_HANDLER_REPLY_ID))
+        .collect();
+
     Ok(Response::new()
-        .add_messages(messages)
+        .add_submessages(submessages)
         .add_attribute("action", "dex_deposit")
         .add_attribute("token_0_balance", balances[0].amount.to_string())
         .add_attribute("token_1_balance", balances[1].amount.to_string()))

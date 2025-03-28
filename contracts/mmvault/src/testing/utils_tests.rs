@@ -105,6 +105,7 @@ fn test_get_deposit_data(
 #[test_case(PrecDec::from_str("0.00000009234").unwrap() => 161986; "tiny fraction")]
 #[test_case(PrecDec::from_str("0.000000000000123").unwrap() => 297281; "tinier fraction")]
 #[test_case(PrecDec::from_str("0.999999999999999999").unwrap() => 0; "slightly below 1 with max precision")]
+#[test_case(PrecDec::from_str("0.1520304").unwrap() => 18838; "real")]
 fn test_price_to_tick_index(price: PrecDec) -> i64 {
     price_to_tick_index(price).unwrap()
 }
@@ -453,6 +454,81 @@ mod tests {
                         deposit_msg.fees[j]
                     );
                 }
+            } else {
+                panic!("Expected Any message, got: {:?}", msg);
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_deposit_messages_real_scenario() {
+        let env = mock_env();
+        let mut config = setup_test_config();
+        let mut prices = setup_test_prices();
+        config.fee_tier_config.fee_tiers = vec![
+            FeeTier {
+                fee: 10,
+                percentage: 30,
+            },
+            FeeTier {
+                fee: 20,
+                percentage: 70,
+            },
+        ];
+        config.skew = false;
+        // Set prices to match the real scenario
+        prices.price_0_to_1 = PrecDec::from_str("0.1520304").unwrap();
+        prices.token_0_price = PrecDec::from_str("0.0000001520304").unwrap();
+        prices.token_1_price = PrecDec::from_str("0.000001").unwrap();
+
+        let tick_index = 18838; // You might want to calculate the actual tick index from price_0_to_1
+
+        // Set the actual balances we observed
+        let token0_balance = Uint128::new(5);
+        let token1_balance = Uint128::new(38384947153);
+
+        let messages = get_deposit_messages(
+            &env,
+            config.clone(),
+            tick_index,
+            prices,
+            token0_balance,
+            token1_balance,
+        )
+        .unwrap();
+
+        // Should return at least one message
+        assert!(
+            !messages.is_empty(),
+            "Expected at least one deposit message"
+        );
+
+        // Print out detailed information about each message
+        for (i, msg) in messages.iter().enumerate() {
+            if let CosmosMsg::Any(any_msg) = msg {
+                let deposit_msg = MsgDeposit::decode(any_msg.value.as_slice()).unwrap();
+                println!("Deposit Message {}", i);
+                println!("  Token A amounts: {:?}", deposit_msg.amounts_a);
+                println!("  Token B amounts: {:?}", deposit_msg.amounts_b);
+                println!("  Tick indexes: {:?}", deposit_msg.tick_indexes_a_to_b);
+                println!("  Fees: {:?}", deposit_msg.fees);
+
+                // Verify basic properties
+                assert_eq!(deposit_msg.creator, env.contract.address.to_string());
+                assert_eq!(deposit_msg.receiver, env.contract.address.to_string());
+                assert_eq!(deposit_msg.token_a, config.pair_data.token_0.denom);
+                assert_eq!(deposit_msg.token_b, config.pair_data.token_1.denom);
+
+                // Verify fee tiers
+                assert!(
+                    config
+                        .fee_tier_config
+                        .fee_tiers
+                        .iter()
+                        .any(|tier| tier.fee == deposit_msg.fees[0]),
+                    "Fee {} not found in config",
+                    deposit_msg.fees[0]
+                );
             } else {
                 panic!("Expected Any message, got: {:?}", msg);
             }
