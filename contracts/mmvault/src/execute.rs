@@ -111,6 +111,8 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
     Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "deposit")
+        .add_attribute("token_0_deposited", token0_deposited.to_string())
+        .add_attribute("token_1_deposited", token1_deposited.to_string())
         .add_attribute("from", info.sender.to_string())
         .add_attribute("minted_amount", amount_to_mint.to_string())
         .add_attribute("total_shares", config.total_shares.to_string()))
