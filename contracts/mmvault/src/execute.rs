@@ -160,7 +160,8 @@ pub fn withdraw(
     // we know there are no deposits here, so we can query the contract balance directly
     // If no existing deposits, handle direct withdrawal
     if messages.is_empty() {
-        let balances = query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
+        let balances =
+            query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
         let (withdrawal_messages, withdraw_amount_0, withdraw_amount_1) = get_withdrawal_messages(
             &env,
             &deps,
@@ -307,7 +308,8 @@ pub fn handle_withdrawal_reply(
             CONFIG.save(deps.storage, &config)?;
 
             // we know there are no deposits here, so we can query the contract balance directly
-            let balances = query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
+            let balances =
+                query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
 
             let (withdrawal_messages, withdraw_amount_0, withdraw_amount_1) =
                 get_withdrawal_messages(

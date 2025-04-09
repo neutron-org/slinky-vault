@@ -1,6 +1,6 @@
-use crate::{error::ContractResult, utils::get_virtual_contract_balance};
 use crate::state::CONFIG;
-use cosmwasm_std::{to_json_binary, Binary, Deps, Env, Coin};
+use crate::{error::ContractResult, utils::get_virtual_contract_balance};
+use cosmwasm_std::{to_json_binary, Binary, Coin, Deps, Env};
 use neutron_std::types::neutron::dex::DexQuerier;
 
 pub fn q_dex_deposit(deps: Deps, _env: Env) -> ContractResult<Binary> {
@@ -25,6 +25,4 @@ pub fn query_balance(deps: Deps, env: Env) -> ContractResult<Binary> {
         Coin::new(balance.1, config.pair_data.token_1.denom),
     ];
     Ok(to_json_binary(&balance_coins)?)
-
-   
 }
