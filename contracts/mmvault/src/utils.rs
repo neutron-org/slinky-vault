@@ -74,7 +74,7 @@ pub fn get_token_value(
 
 /// Queries the contract's balance for the specified token denoms
 pub fn query_contract_balance(
-    deps: &DepsMut,
+    deps: Deps,
     env: Env,
     pair_data: PairData,
 ) -> Result<Vec<Coin>, ContractError> {
@@ -336,7 +336,7 @@ pub fn extract_denom(result: &SubMsgResponse) -> Result<String, ContractError> {
 /// Get the virtual contract balance. Which includes all the tokens deposited in AMM positions + the tokens available in the contract.
 pub fn get_virtual_contract_balance(
     env: Env,
-    deps: &DepsMut,
+    deps: Deps,
     config: Config,
 ) -> Result<(Uint128, Uint128), ContractError> {
     let dex_querier = DexQuerier::new(&deps.querier);

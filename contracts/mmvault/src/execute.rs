@@ -61,7 +61,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
 
     // get total contract balance, including value in active deposits.
     let (total_amount_0, total_amount_1) =
-        get_virtual_contract_balance(env.clone(), &deps, config.clone())?;
+        get_virtual_contract_balance(env.clone(), deps.as_ref(), config.clone())?;
 
     // Get the value of the tokens in the contract
     let (deposit_value_0, deposit_value_1) =
@@ -158,7 +158,7 @@ pub fn withdraw(
     // we know there are no deposits here, so we can query the contract balance directly
     // If no existing deposits, handle direct withdrawal
     if messages.is_empty() {
-        let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
+        let balances = query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
         let (withdrawal_messages, withdraw_amount_0, withdraw_amount_1) = get_withdrawal_messages(
             &env,
             &deps,
@@ -225,7 +225,7 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
     let prices: crate::msg::CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
     let tick_index = price_to_tick_index(prices.price_0_to_1)?;
 
-    let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
+    let balances = query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
 
     let messages = get_deposit_messages(
         &env,
@@ -305,7 +305,7 @@ pub fn handle_withdrawal_reply(
             CONFIG.save(deps.storage, &config)?;
 
             // we know there are no deposits here, so we can query the contract balance directly
-            let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
+            let balances = query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
 
             let (withdrawal_messages, withdraw_amount_0, withdraw_amount_1) =
                 get_withdrawal_messages(

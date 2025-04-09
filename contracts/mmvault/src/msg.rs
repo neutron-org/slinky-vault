@@ -163,6 +163,7 @@ pub enum QueryMsg {
     GetDeposits {},
     GetConfig {},
     GetPrices {},
+    GetBalance {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
