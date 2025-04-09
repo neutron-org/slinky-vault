@@ -192,6 +192,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
                 to_vec(&prices).map_err(|_| ContractError::SerializationError)?;
             Ok(Binary::from(serialized_prices))
         }
+        QueryMsg::GetBalance {} => {
+            let balance = query_balance(deps, _env)?;
+            Ok(balance)
+        }
     }
 }
 
