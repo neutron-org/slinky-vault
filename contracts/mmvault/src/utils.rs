@@ -74,7 +74,7 @@ pub fn get_token_value(
 
 /// Queries the contract's balance for the specified token denoms
 pub fn query_contract_balance(
-    deps: &DepsMut,
+    deps: Deps,
     env: Env,
     pair_data: PairData,
 ) -> Result<Vec<Coin>, ContractError> {
@@ -336,7 +336,7 @@ pub fn extract_denom(result: &SubMsgResponse) -> Result<String, ContractError> {
 /// Get the virtual contract balance. Which includes all the tokens deposited in AMM positions + the tokens available in the contract.
 pub fn get_virtual_contract_balance(
     env: Env,
-    deps: &DepsMut,
+    deps: Deps,
     config: Config,
 ) -> Result<(Uint128, Uint128), ContractError> {
     let dex_querier = DexQuerier::new(&deps.querier);
@@ -768,7 +768,7 @@ pub fn prepare_state(
     let target_tick_index_0 = index + config.fee_tier_config.fee_tiers[0].fee as i64;
     let target_tick_index_1 = -index + config.fee_tier_config.fee_tiers[0].fee as i64;
 
-    let balances = query_contract_balance(deps, env.clone(), config.pair_data.clone())?;
+    let balances = query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
     let token_0_usable = balances[0].amount;
     let token_1_usable = balances[1].amount;
 

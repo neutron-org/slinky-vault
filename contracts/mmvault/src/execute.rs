@@ -1,8 +1,8 @@
 use crate::error::ContractError;
 use crate::msg::{CombinedPriceResponse, ConfigUpdateMsg, WithdrawPayload};
 use crate::state::{
-    CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_ID_1, DEX_DEPOSIT_REPLY_ID_2,
-    WITHDRAW_REPLY_ID,
+    CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_HANDLER_REPLY_ID, DEX_DEPOSIT_REPLY_ID_1,
+    DEX_DEPOSIT_REPLY_ID_2, WITHDRAW_REPLY_ID,
 };
 use crate::utils::*;
 use cosmwasm_std::{
@@ -64,7 +64,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
 
     // get total contract balance, including value in active deposits.
     let (total_amount_0, total_amount_1) =
-        get_virtual_contract_balance(env.clone(), &deps, config.clone())?;
+        get_virtual_contract_balance(env.clone(), deps.as_ref(), config.clone())?;
 
     // Get the value of the tokens in the contract
     let (deposit_value_0, deposit_value_1) =
@@ -117,6 +117,8 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
     Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "deposit")
+        .add_attribute("token_0_deposited", token0_deposited.to_string())
+        .add_attribute("token_1_deposited", token1_deposited.to_string())
         .add_attribute("from", info.sender.to_string())
         .add_attribute("minted_amount", amount_to_mint.to_string())
         .add_attribute("total_shares", config.total_shares.to_string()))
@@ -164,7 +166,8 @@ pub fn withdraw(
     // we know there are no deposits here, so we can query the contract balance directly
     // If no existing deposits, handle direct withdrawal
     if messages.is_empty() {
-        let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
+        let balances =
+            query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
         let (withdrawal_messages, withdraw_amount_0, withdraw_amount_1) = get_withdrawal_messages(
             &env,
             &deps,
@@ -233,6 +236,7 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
 
     // prepare the state for the AMM Deposit.
     let prepare_state_messages = prepare_state(&deps, &env, &config, tick_index, prices.clone())?;
+    let balances = query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
 
     // Create submessages with appropriate payload IDs
     let mut submessages = Vec::new();
@@ -315,7 +319,8 @@ pub fn handle_withdrawal_reply(
             CONFIG.save(deps.storage, &config)?;
 
             // we know there are no deposits here, so we can query the contract balance directly
-            let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
+            let balances =
+                query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
 
             let (withdrawal_messages, withdraw_amount_0, withdraw_amount_1) =
                 get_withdrawal_messages(
@@ -532,7 +537,7 @@ pub fn handle_dex_deposit_reply(deps: DepsMut, env: Env) -> Result<Response, Con
 
     let prices = get_prices(deps.as_ref(), env.clone())?;
     let tick_index = price_to_tick_index(prices.price_0_to_1)?;
-    let balances = query_contract_balance(&deps, env.clone(), config.pair_data.clone())?;
+    let balances = query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
 
     let messages = get_deposit_messages(
         &env,
@@ -542,8 +547,14 @@ pub fn handle_dex_deposit_reply(deps: DepsMut, env: Env) -> Result<Response, Con
         balances[0].amount,
         balances[1].amount,
     )?;
+
+    let submessages: Vec<SubMsg> = messages
+        .into_iter()
+        .map(|msg| SubMsg::reply_always(msg, DEX_DEPOSIT_REPLY_HANDLER_REPLY_ID))
+        .collect();
+
     Ok(Response::new()
-        .add_messages(messages)
+        .add_submessages(submessages)
         .add_attribute("action", "dex_deposit")
         .add_attribute("token_0_balance", balances[0].amount.to_string())
         .add_attribute("token_1_balance", balances[1].amount.to_string()))

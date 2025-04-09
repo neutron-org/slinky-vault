@@ -3,8 +3,8 @@ use crate::execute::*;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload};
 use crate::query::*;
 use crate::state::{
-    Config, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_ID_1,
-    DEX_DEPOSIT_REPLY_ID_2, WITHDRAW_REPLY_ID,
+    Config, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_HANDLER_REPLY_ID,
+    DEX_DEPOSIT_REPLY_ID_1, DEX_DEPOSIT_REPLY_ID_2, WITHDRAW_REPLY_ID,
 };
 use crate::utils::*;
 use cosmwasm_std::{
@@ -195,6 +195,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
                 to_vec(&prices).map_err(|_| ContractError::SerializationError)?;
             Ok(Binary::from(serialized_prices))
         }
+        QueryMsg::GetBalance {} => {
+            let balance = query_balance(deps, _env)?;
+            Ok(balance)
+        }
     }
 }
 
@@ -247,6 +251,19 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
                     Err(err)
                 }
             }
+        }
+        DEX_DEPOSIT_REPLY_HANDLER_REPLY_ID => {
+            if let Err(err) = msg.result.clone().into_result() {
+                // Log the error but don't propagate it
+                return Ok(Response::new()
+                    .add_attribute("action", "dex_deposit")
+                    .add_attribute("status", "error_handled")
+                    .add_attribute("error", format!("{:?}", err)));
+            }
+            // If successful, just return an empty response
+            Ok(Response::new()
+                .add_attribute("action", "dex_deposit")
+                .add_attribute("status", "success"))
         }
         id => Err(ContractError::UnknownReplyId { id }),
     }

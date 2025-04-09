@@ -1134,7 +1134,60 @@ fn test_dex_deposit_with_skew() {
     // Verify that deposit messages were created
     assert!(!res.messages.is_empty());
 }
+#[test]
+fn test_dex_deposit_with_high_imbalance() {
+    // Setup
+    let mut querier = setup_mock_querier();
+    let env = mock_env();
 
+    // Set up contract balances with imbalance
+    querier.set_contract_balance(
+        env.contract.address.as_ref(),
+        vec![
+            Coin::new(5u128, "token0"),
+            Coin::new(38384947153u128, "token1"),
+        ],
+    );
+    // Setup price data
+    let price_response = CombinedPriceResponse {
+        token_0_price: PrecDec::from_str("0.0000001520304").unwrap(),
+        token_1_price: PrecDec::from_str("0.000001").unwrap(),
+        price_0_to_1: PrecDec::from_str("0.1520304").unwrap(),
+    };
+
+    querier.set_price_response(price_response);
+
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    let mut config = setup_test_config(env.clone());
+    config.fee_tier_config.fee_tiers = vec![
+        FeeTier {
+            fee: 10,
+            percentage: 30,
+        },
+        FeeTier {
+            fee: 150,
+            percentage: 70,
+        },
+    ];
+
+    // Enable skew
+    config.skew = false;
+
+    // Store config
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    // let res: cosmwasm_std::Response = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+    let res = handle_dex_deposit_reply(deps.as_mut(), env.clone()).unwrap();
+
+    println!("res: {:?}", res);
+    // Verify response
+    assert_eq!(res.attributes.len(), 3);
+    assert_eq!(res.attributes[0].key, "action");
+    assert_eq!(res.attributes[0].value, "dex_deposit");
+
+    // Verify that deposit messages were created
+    assert!(!res.messages.is_empty());
+}
 #[test]
 fn test_dex_deposit_staleness_check() {
     // Setup

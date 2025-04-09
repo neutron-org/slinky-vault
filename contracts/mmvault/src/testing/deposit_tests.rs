@@ -137,12 +137,16 @@ fn test_deposit_success() {
     .unwrap();
 
     // Verify response
-    assert_eq!(res.attributes.len(), 4);
+    assert_eq!(res.attributes.len(), 6);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "deposit");
-    assert_eq!(res.attributes[1].key, "from");
-    assert_eq!(res.attributes[1].value, "user1");
-    assert_eq!(res.attributes[2].key, "minted_amount");
+    assert_eq!(res.attributes[1].key, "token_0_deposited");
+    assert_eq!(res.attributes[1].value, deposit_amount_0.to_string());
+    assert_eq!(res.attributes[2].key, "token_1_deposited");
+    assert_eq!(res.attributes[2].value, deposit_amount_1.to_string());
+    assert_eq!(res.attributes[3].key, "from");
+    assert_eq!(res.attributes[3].value, "user1");
+    assert_eq!(res.attributes[4].key, "minted_amount");
 
     // Verify that LP tokens were minted
     assert!(!res.messages.is_empty());
