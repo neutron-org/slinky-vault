@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 use crate::error::{ContractError, ContractResult};
 use crate::state::{CombinedPriceResponse, TokenData, CONFIG};
@@ -10,7 +11,11 @@ use neutron_std::types::slinky::{
     types::v1::CurrencyPair,
 };
 
-use crate::external_types::{QueryMsgDrop, RedemptionRateResponse};
+use crate::external_types::{QueryMsgDrop, RedemptionRateResponse, Config, UnbondingPeriodResponse};
+
+static E: LazyLock<PrecDec> = LazyLock::new(|| {
+    PrecDec::from_str("2.71828182845904523536028747135266249775724709369995").unwrap()
+});
 
 pub fn query_oracle_price(deps: &Deps, pair: &CurrencyPair) -> ContractResult<GetPriceResponse> {
     let querier = OracleQuerier::new(&deps.querier);
@@ -202,6 +207,7 @@ pub fn get_prices(
         pair: &CurrencyPair,
         max_blocks_old: u64,
     ) -> ContractResult<PrecDec> {
+        let config = CONFIG.load(deps.storage)?;
         // Check if the pair's base is USD denom
         if is_usd_denom(&pair.base) {
             return Ok(PrecDec::one());
@@ -226,6 +232,7 @@ pub fn get_prices(
         Ok(price)
     }
     let redemption_rate = query_redemption_rate(deps, env.clone())?;
+    let unbonding_period = query_unbonding_period(deps, env.clone())?;
     // Get prices for token_0 and token_1, or default to 1 for valid currencies
     let mut token_0_price =
         get_price_or_default(&deps, &env, &pair_1, token_a.max_blocks_old)?.checked_div(
@@ -237,9 +244,9 @@ pub fn get_prices(
             PrecDec::from_ratio(10u128.pow(token_b.decimals.into()), 1u128),
         )?;
     if token_a.denom.eq(&config.d_asset_denom.clone()) {
-        token_0_price = get_dasset_price(token_0_price, redemption_rate)?;
+        token_0_price = get_dasset_price(token_0_price, redemption_rate, unbonding_period, config.staking_rewards)?;
     } else {
-        token_1_price = get_dasset_price(token_1_price, redemption_rate)?;
+        token_1_price = get_dasset_price(token_1_price, redemption_rate, unbonding_period, config.staking_rewards)?;
     }
     // Calculate the price ratio
     let price_0_to_1 = price_ratio(token_0_price, token_1_price);
@@ -281,16 +288,47 @@ pub fn query_redemption_rate(deps: Deps, env: Env) -> ContractResult<RedemptionR
     })
 }
 
+pub fn query_unbonding_period(deps: Deps, env: Env) -> ContractResult<UnbondingPeriodResponse> {
+    let config = CONFIG.load(deps.storage)?;
+    let core_config: Config = deps
+        .querier
+        .query_wasm_smart(config.core_contract.clone(), &QueryMsgDrop::Config {})?;
+
+    // Convert seconds to years (1 year = 31,536,000 seconds)
+    const SECONDS_PER_YEAR: u64 = 31_536_000;
+    let unbonding_period_years = core_config.unbonding_period as f64 / SECONDS_PER_YEAR as f64;
+
+    Ok(UnbondingPeriodResponse {
+        unbonding_period: unbonding_period_years as u64,
+        update_time: env.block.time.seconds(),
+    })
+}
+
 pub fn get_dasset_price(
     base_price: PrecDec,
     redemption_rate: RedemptionRateResponse,
+    unbonding_period: UnbondingPeriodResponse,
+    staking_rewards: u64,
 ) -> ContractResult<PrecDec> {
     // Calculate the LST price by multiplying the base asset price by the redemption rate
     let redemption_rate_prec_dec = PrecDec::from_str(&redemption_rate.redemption_rate.to_string())
         .map_err(|_| ContractError::PrecDecConversionError)?;
-    let lst_price = base_price.checked_mul(redemption_rate_prec_dec)?;
-
-    // Return the Decimal value directly
+    let lst_price_pure: PrecDec = base_price.checked_mul(redemption_rate_prec_dec)?;
+    
+    // Calculate the exponential factor: e^(-staking_rewards * unbonding_period)
+    let staking_rewards_prec = PrecDec::from_atomics(staking_rewards, 0)
+        .map_err(|_| ContractError::PrecDecConversionError)?;
+    let unbonding_period_prec = PrecDec::from_atomics(unbonding_period.unbonding_period, 0)
+        .map_err(|_| ContractError::PrecDecConversionError)?;
+    let x = staking_rewards_prec.checked_mul(unbonding_period_prec)?;
+    
+    // Calculate e^(-x) as 1/e^x
+    let exp_x = E.checked_pow(x.to_uint_floor().to_string().parse::<u32>().unwrap())?;
+    let exp_factor = PrecDec::one().checked_div(exp_x)?;
+    
+    // Calculate final LST price
+    let lst_price = lst_price_pure.checked_mul(exp_factor)?;
+    
     Ok(lst_price)
 }
 

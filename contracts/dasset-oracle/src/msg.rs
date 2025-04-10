@@ -38,4 +38,5 @@ pub struct InstantiateMsg {
     pub core_contract: String,
     pub owner: String,
     pub d_asset_denom: String,
+    pub staking_rewards: u64,
 }

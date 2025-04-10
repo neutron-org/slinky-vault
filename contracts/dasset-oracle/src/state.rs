@@ -24,6 +24,7 @@ pub struct CombinedPriceResponse {
 pub struct Config {
     pub core_contract: Addr,
     pub d_asset_denom: String,
+    pub staking_rewards: u64,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");

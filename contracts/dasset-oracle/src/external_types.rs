@@ -31,3 +31,24 @@ pub struct RedemptionRateResponse {
     pub redemption_rate: Decimal,
     pub update_time: u64,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct UnbondingPeriodResponse {
+    pub unbonding_period: u64,
+    pub update_time: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Config {
+    pub factory_contract: String,
+    pub base_denom: String,
+    pub remote_denom: String,
+    pub idle_min_interval: u64,
+    pub unbonding_period: u64,
+    pub unbonding_safe_period: u64,
+    pub unbond_batch_switch_time: u64,
+    pub pump_ica_address: Option<String>,
+    pub transfer_channel_id: String,
+    pub emergency_address: Option<String>,
+    pub icq_update_delay: u64,
+}

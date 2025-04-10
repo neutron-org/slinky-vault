@@ -31,6 +31,7 @@ pub fn instantiate(
     let config = &Config {
         core_contract: core_contract.clone(),
         d_asset_denom: msg.d_asset_denom,
+        staking_rewards: msg.staking_rewards,
     };
 
     CONFIG.save(deps.storage, config)?;
