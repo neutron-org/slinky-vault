@@ -553,9 +553,19 @@ pub fn handle_dex_deposit_reply(deps: DepsMut, env: Env) -> Result<Response, Con
         .map(|msg| SubMsg::reply_always(msg, DEX_DEPOSIT_REPLY_HANDLER_REPLY_ID))
         .collect();
 
-    Ok(Response::new()
-        .add_submessages(submessages)
+    let mut response = Response::new()
+        .add_submessages(submessages.clone())
         .add_attribute("action", "dex_deposit")
         .add_attribute("token_0_balance", balances[0].amount.to_string())
-        .add_attribute("token_1_balance", balances[1].amount.to_string()))
+        .add_attribute("token_1_balance", balances[1].amount.to_string());
+
+    // Add deposit messages as attributes
+    for (i, msg) in submessages.iter().enumerate() {
+        response = response.add_attribute(
+            format!("deposit_message_{}", i),
+            format!("{:?}", msg)
+        );
+    }
+
+    Ok(response)
 }
