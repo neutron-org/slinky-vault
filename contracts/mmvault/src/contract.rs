@@ -163,6 +163,14 @@ pub fn execute(
             }
             dex_withdrawal(deps, _env, info)
         }
+        ExecuteMsg::DexBatchExecute { .. } => {
+            // Prevent tokens from being sent with the DexBatchExecute message
+            if !info.funds.is_empty() {
+                return Err(ContractError::FundsNotAllowed);
+            }
+            
+            dex_batch_execute(deps, _env, info)
+        }
         ExecuteMsg::CreateToken { .. } => {
             // Prevent tokens from being sent with the CreateToken message
             if !info.funds.is_empty() {

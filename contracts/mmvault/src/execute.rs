@@ -300,6 +300,85 @@ pub fn dex_withdrawal(
         .add_attribute("action", "dex_withdrawal"))
 }
 
+/// Privilaged function to perform a DEX withdrawal.
+pub fn dex_batch_execute(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+) -> Result<Response, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+    // Verify that the sender is the owner
+    if !config.whitelist.contains(&info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // Check if there are any active deposits
+    let dex_querier = DexQuerier::new(&deps.querier);
+    let res: QueryAllUserDepositsResponse =
+        dex_querier.user_deposits_all(env.contract.address.to_string(), None, true)?;
+
+    // Create withdrawal messages
+    let messages = res
+        .deposits
+        .iter()
+        .map(|deposit| {
+            Into::<CosmosMsg>::into(MsgWithdrawal {
+                creator: env.contract.address.to_string(),
+                receiver: env.contract.address.to_string(),
+                token_a: config.pair_data.token_0.denom.clone(),
+                token_b: config.pair_data.token_1.denom.clone(),
+                shares_to_remove: vec![deposit
+                    .shares_owned
+                    .parse()
+                    .expect("Failed to parse the string as an integer")],
+                tick_indexes_a_to_b: vec![deposit.center_tick_index],
+                fees: vec![deposit.fee],
+            })
+        })
+        .collect::<Vec<CosmosMsg>>();
+
+    // if paused we still want to complete the withdrawal
+    if config.paused {
+        return Ok(Response::new()
+        .add_messages(messages)
+        .add_attribute("action", "dex_withdrawal_paused"))
+    }
+
+    // if stale we still want to complete the withdrawal
+    if let Some(response) = check_staleness(&env, &info, &mut config)? {
+        CONFIG.save(deps.storage, &config)?;
+        return Ok(response.add_messages(messages).add_attribute("action", "dex_withdrawal_stale"));
+    }
+
+    CONFIG.save(deps.storage, &config)?;
+
+    // get the current slinky price and tick index
+    let prices: crate::msg::CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
+    let tick_index = price_to_tick_index(prices.price_0_to_1)?;
+
+    // prepare the state for the AMM Deposit.
+    let prepare_state_messages = prepare_state(&deps, &env, &config, tick_index, prices.clone())?;
+
+    // Create submessages with appropriate payload IDs
+    let mut submessages = Vec::new();
+
+    // Create submessages with appropriate payload IDs. They need separate payload IDs as we reploy only on the DEX_DEPOSIT_REPLY_ID_2
+    // Both messages need handling because either or both LOs can fail. We need to handle both cases gracefully without reverting
+    // and always handle the reply after the last one is received.
+    for (i, msg) in prepare_state_messages.into_iter().enumerate() {
+        if i == 0 {
+            submessages.push(SubMsg::reply_always(msg, DEX_DEPOSIT_REPLY_ID_1));
+        } else {
+            submessages.push(SubMsg::reply_always(msg, DEX_DEPOSIT_REPLY_ID_2));
+        }
+    }
+
+    
+    Ok(Response::new()
+        .add_messages(messages)
+        .add_submessages(submessages)
+        .add_attribute("action", "batched_withdrawal_and_prepare_deposit"))
+}
 /// Handle the withdrawal reply. withdraw function will reply if there are active DEX deposits.
 /// This is called as reply once deposits are withdrawn.
 pub fn handle_withdrawal_reply(

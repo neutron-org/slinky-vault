@@ -155,6 +155,8 @@ pub enum ExecuteMsg {
     CreateToken {},
     // update the config
     UpdateConfig { update: ConfigUpdateMsg },
+    // batch execute a dex_deposit and dex_withdrawal
+    DexBatchExecute {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
