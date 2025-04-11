@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use crate::error::ContractError;
 use crate::msg::{CombinedPriceResponse, ConfigUpdateMsg, WithdrawPayload};
 use crate::state::{
@@ -543,7 +545,7 @@ pub fn handle_dex_deposit_reply(deps: DepsMut, env: Env) -> Result<Response, Con
         &env,
         config.clone(),
         tick_index,
-        prices,
+        prices.clone(),
         balances[0].amount,
         balances[1].amount,
     )?;
@@ -561,11 +563,9 @@ pub fn handle_dex_deposit_reply(deps: DepsMut, env: Env) -> Result<Response, Con
 
     // Add deposit messages as attributes
     for (i, msg) in submessages.iter().enumerate() {
-        response = response.add_attribute(
-            format!("deposit_message_{}", i),
-            format!("{:?}", msg)
-        );
+        response = response.add_attribute(format!("deposit_message_{}", i), format!("{:?}", msg));
     }
-
+    response = response.add_attribute("config", format!("{:?}", config));
+    response = response.add_attribute("prices", format!("{:?}", prices));
     Ok(response)
 }
