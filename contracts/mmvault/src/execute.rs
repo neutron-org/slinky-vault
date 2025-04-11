@@ -1,5 +1,3 @@
-use std::fmt::format;
-
 use crate::error::ContractError;
 use crate::msg::{CombinedPriceResponse, ConfigUpdateMsg, WithdrawPayload};
 use crate::state::{
