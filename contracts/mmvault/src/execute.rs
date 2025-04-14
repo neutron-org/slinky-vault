@@ -26,8 +26,6 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         return Ok(response);
     }
 
-    CONFIG.save(deps.storage, &config)?;
-
     // Extract the sent funds from the transaction info
     let sent_funds = info.funds;
 
