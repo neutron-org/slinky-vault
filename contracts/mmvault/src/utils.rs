@@ -78,12 +78,11 @@ pub fn query_contract_balance(
     env: Env,
     pair_data: PairData,
 ) -> Result<Vec<Coin>, ContractError> {
-    let contract_address = env.contract.address;
     let mut balances: Vec<Coin> = vec![];
 
     for denom in &[pair_data.token_0.denom, pair_data.token_1.denom] {
         let balance_request = QueryRequest::Bank(BankQuery::Balance {
-            address: contract_address.to_string(),
+            address: env.contract.address.to_string(),
             denom: denom.clone(),
         });
 
