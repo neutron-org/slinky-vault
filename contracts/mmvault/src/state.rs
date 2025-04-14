@@ -48,7 +48,7 @@ impl std::fmt::Display for FeeTierConfig {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct Config {
-    /// number of blocks until price is stale
+    /// token and denom information
     pub pair_data: PairData,
     /// the denom of the contract's LP token
     pub lp_denom: String,
