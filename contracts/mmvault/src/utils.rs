@@ -54,7 +54,7 @@ pub fn get_token_value(
     prices: CombinedPriceResponse,
     token0_deposited: Uint128,
     token1_deposited: Uint128,
-) -> ContractResult<(PrecDec, PrecDec)> {
+) -> ContractResult<PrecDec> {
     let mut value_0 = PrecDec::zero();
     let mut value_1 = PrecDec::zero();
 
@@ -68,8 +68,8 @@ pub fn get_token_value(
             .unwrap()
             .checked_mul(prices.token_1_price)?;
     }
-
-    Ok((value_0, value_1))
+    let total_value = value_0.checked_add(value_1)?;
+    Ok(total_value)
 }
 
 /// Queries the contract's balance for the specified token denoms
@@ -389,43 +389,24 @@ pub fn get_virtual_contract_balance(
 /// This is used to calculate the mint amount when a user deposits tokens.
 pub fn get_mint_amount(
     config: Config,
-    prices: CombinedPriceResponse,
-    deposited_value_token_0: PrecDec,
-    deposited_value_token_1: PrecDec,
-    total_amount_0: Uint128,
-    total_amount_1: Uint128,
+    deposited_value: PrecDec,
+    total_value: PrecDec,
+    existing_value: PrecDec,
 ) -> Result<Uint128, ContractError> {
     let mut total_shares: PrecDec = PrecDec::zero();
-
-    // Get the total value of the remaining tokens
-    let total_value_token_0 = PrecDec::from_atomics(total_amount_0, 0)
-        .map_err(|_| ContractError::DecimalConversionError)?
-        .checked_mul(prices.token_0_price)?;
-    let total_value_token_1 = PrecDec::from_atomics(total_amount_1, 0)
-        .map_err(|_| ContractError::DecimalConversionError)?
-        .checked_mul(prices.token_1_price)?;
-
-    // get the value of the incoming deposit.
-    let deposit_value_incoming = deposited_value_token_0
-        .checked_add(deposited_value_token_1)
-        .unwrap();
-    // get the total value of the existing tokens in the contract.
-    let total_value_existing = total_value_token_0
-        .checked_add(total_value_token_1)?
-        .checked_sub(deposit_value_incoming)?;
 
     if config.total_shares == Uint128::zero() {
         // Initial deposit - set shares equal to deposit value.
         // we multiply by the SHARES_MULTIPLIER which sets the standard for the share amount for future deposits.
         // having a large number of shares allows for more percision.
         total_shares =
-            deposit_value_incoming.checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))?;
+            deposited_value.checked_mul(PrecDec::from_ratio(SHARES_MULTIPLIER, 1u128))?;
     } else {
         // Calculate proportional shares based on the ratio of deposit value to total value
-        total_shares = deposit_value_incoming
+        total_shares = deposited_value
             .checked_mul(PrecDec::from_ratio(config.total_shares, 1u128))
             .map_err(|_| ContractError::ConversionError)?
-            .checked_div(total_value_existing)
+            .checked_div(existing_value)
             .map_err(|_| ContractError::ConversionError)?;
     }
 

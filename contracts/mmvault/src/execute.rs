@@ -64,14 +64,9 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         get_virtual_contract_balance(env.clone(), deps.as_ref(), config.clone())?;
 
     // Get the value of the tokens in the contract
-    let (deposit_value_0, deposit_value_1) =
-        get_token_value(prices.clone(), token0_deposited, token1_deposited)?;
-    let (total_value_0, total_value_1) =
-        get_token_value(prices.clone(), total_amount_0, total_amount_1)?;
-
-    // calculate the total deposit value
-    let total_value = total_value_0.checked_add(total_value_1)?;
-
+    let deposit_value = get_token_value(prices.clone(), token0_deposited, token1_deposited)?;
+    let total_value = get_token_value(prices.clone(), total_amount_0, total_amount_1)?;
+    let existing_value = total_value.checked_sub(deposit_value)?;
     // check if they exceed the cap
     let exceeds_cap = total_value > PrecDec::from_atomics(config.deposit_cap, 0).unwrap();
 
@@ -81,14 +76,8 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
     }
 
     // get the amount of LP tokens to mint
-    let amount_to_mint = get_mint_amount(
-        config.clone(),
-        prices,
-        deposit_value_0,
-        deposit_value_1,
-        total_amount_0,
-        total_amount_1,
-    )?;
+    let amount_to_mint =
+        get_mint_amount(config.clone(), deposit_value, total_value, existing_value)?;
 
     config.total_shares += amount_to_mint;
     CONFIG.save(deps.storage, &config)?;
@@ -303,10 +292,6 @@ pub fn handle_withdrawal_reply(
             let mut messages: Vec<CosmosMsg> = vec![];
             let mut config = CONFIG.load(deps.storage)?;
 
-            // reduce total shares by the amount burned
-            config.total_shares = config.total_shares.checked_sub(burn_amount)?;
-            CONFIG.save(deps.storage, &config)?;
-
             // we know there are no deposits here, so we can query the contract balance directly
             let balances =
                 query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
@@ -322,6 +307,10 @@ pub fn handle_withdrawal_reply(
                     balances[1].amount,
                 )?;
             messages.extend(withdrawal_messages);
+
+            // reduce total shares by the amount burned
+            config.total_shares = config.total_shares.checked_sub(burn_amount)?;
+            CONFIG.save(deps.storage, &config)?;
 
             // update the deposited value
             let prices: CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
