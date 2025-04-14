@@ -652,7 +652,7 @@ pub fn get_withdrawal_messages(
 ) -> Result<(Vec<CosmosMsg>, Uint128, Uint128), ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
 
-    let total_supply: Uint128 = deps.querier.query_supply(&config.lp_denom)?.amount;
+    let total_supply: Uint128 = config.total_shares;
     if burn_amount > total_supply {
         return Err(ContractError::InvalidWithdrawAmount);
     }
