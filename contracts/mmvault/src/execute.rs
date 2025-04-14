@@ -418,6 +418,11 @@ pub fn update_config(
 
     // Update owner if provided
     if let Some(whitelist) = update.whitelist {
+        if whitelist.is_empty() {
+            return Err(ContractError::EmptyValue {
+                kind: "whitelist".to_string(),
+            });
+        }
         let whitelist = whitelist
             .iter()
             .map(|addr| deps.api.addr_validate(addr).map_err(ContractError::Std))
