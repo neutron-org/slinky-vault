@@ -771,7 +771,7 @@ dependencies = [
 [[package]]
 name = "neutron-std"
 version = "5.1.2"
-source = "git+https://github.com/neutron-org/neutron-std?branch=temp%2Fpd_and_sod#f474923efa4e7930d61a4c9609e3e80e458aa719"
+source = "git+https://github.com/neutron-org/neutron-std?branch=temp%2Fpd_and_sod#d0850ae013a37b7623b7e273938291ff3d784003"
 dependencies = [
  "bech32 0.9.1",
  "chrono",
@@ -795,7 +795,7 @@ dependencies = [
 [[package]]
 name = "neutron-std-derive"
 version = "0.20.1"
-source = "git+https://github.com/neutron-org/neutron-std?branch=temp%2Fpd_and_sod#f474923efa4e7930d61a4c9609e3e80e458aa719"
+source = "git+https://github.com/neutron-org/neutron-std?branch=temp%2Fpd_and_sod#d0850ae013a37b7623b7e273938291ff3d784003"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
@@ -943,7 +943,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.12.1",
+ "itertools 0.14.0",
  "proc-macro2",
  "quote",
  "syn 2.0.100",

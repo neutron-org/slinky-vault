@@ -480,6 +480,7 @@ pub fn get_deposit_messages(
                 disable_autoswap: false,
                 fail_tx_on_bel: false,
                 swap_on_deposit: true,
+                swap_on_deposit_slop_tolerance_bps: 50,
             }],
         });
         messages.push(dex_msg);
@@ -553,6 +554,7 @@ pub fn get_deposit_messages(
                     disable_autoswap: false,
                     fail_tx_on_bel: false,
                     swap_on_deposit: true,
+                    swap_on_deposit_slop_tolerance_bps: 50,
                 }],
             });
             messages.push(dex_msg);
@@ -586,6 +588,7 @@ pub fn get_deposit_messages(
                     disable_autoswap: false,
                     fail_tx_on_bel: false,
                     swap_on_deposit: true,
+                    swap_on_deposit_slop_tolerance_bps: 50,
                 }],
             });
             messages.push(dex_msg);
