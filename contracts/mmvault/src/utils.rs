@@ -2,7 +2,7 @@ use crate::error::{ContractError, ContractResult};
 use crate::msg::{CombinedPriceResponse, DepositResult};
 use crate::state::{Config, PairData, TokenData, CONFIG, SHARES_MULTIPLIER};
 use cosmwasm_std::{
-    BalanceResponse, BankMsg, BankQuery, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    BalanceResponse, BankMsg, BankQuery, Binary, Coin, CosmosMsg, Deps, Env, MessageInfo,
     QueryRequest, ReplyOn, Response, SubMsg, SubMsgResponse, Uint128,
 };
 use neutron_std::types::neutron::dex::{
@@ -390,7 +390,6 @@ pub fn get_virtual_contract_balance(
 pub fn get_mint_amount(
     config: Config,
     deposited_value: PrecDec,
-    total_value: PrecDec,
     existing_value: PrecDec,
 ) -> Result<Uint128, ContractError> {
     let mut total_shares: PrecDec = PrecDec::zero();
@@ -628,7 +627,6 @@ pub fn flatten_msgs_always_reply(
 /// the beneficiary with the proportinal value of the total funds in the contract.
 pub fn get_withdrawal_messages(
     env: &Env,
-    deps: &DepsMut,
     config: &Config,
     burn_amount: Uint128,
     beneficiary: String,

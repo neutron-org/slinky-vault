@@ -33,12 +33,6 @@ pub struct RedemptionRateResponse {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct UnbondingPeriodResponse {
-    pub unbonding_period: u64,
-    pub update_time: u64,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
     pub factory_contract: String,
     pub base_denom: String,

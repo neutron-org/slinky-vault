@@ -1,13 +1,12 @@
 use crate::error::{ContractError, ContractResult};
-use crate::external_types::{QueryMsgDrop, RedemptionRateResponse};
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, UpdateConfig};
 use crate::state::{Config, CONFIG};
 use crate::utils::*;
 use cosmwasm_std::{
-    attr, entry_point, to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
+    attr, entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response,
 };
-use cw2::{get_contract_version, set_contract_version};
-use cw_ownable::{get_ownership, update_ownership};
+use cw2::{set_contract_version};
+use cw_ownable::{update_ownership};
 use serde_json::to_vec;
 
 const CONTRACT_NAME: &str = concat!("crates.io:neutron-contracts__", env!("CARGO_PKG_NAME"));

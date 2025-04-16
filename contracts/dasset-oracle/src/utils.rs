@@ -1,5 +1,4 @@
 use std::str::FromStr;
-use std::sync::LazyLock;
 
 use crate::error::{ContractError, ContractResult};
 use crate::state::{CombinedPriceResponse, TokenData, CONFIG};
@@ -11,11 +10,7 @@ use neutron_std::types::slinky::{
     types::v1::CurrencyPair,
 };
 
-use crate::external_types::{QueryMsgDrop, RedemptionRateResponse, Config, UnbondingPeriodResponse};
-
-static E: LazyLock<PrecDec> = LazyLock::new(|| {
-    PrecDec::from_str("2.71828182845904523536028747135266249775724709369995").unwrap()
-});
+use crate::external_types::{QueryMsgDrop, RedemptionRateResponse};
 
 pub fn query_oracle_price(deps: &Deps, pair: &CurrencyPair) -> ContractResult<GetPriceResponse> {
     let querier = OracleQuerier::new(&deps.querier);
@@ -231,7 +226,6 @@ pub fn get_prices(
         Ok(price)
     }
     let redemption_rate = query_redemption_rate(deps, env.clone())?;
-    let unbonding_period = query_unbonding_period(deps, env.clone())?;
     // Get prices for token_0 and token_1, or default to 1 for valid currencies
     let mut token_0_price =
         get_price_or_default(&deps, &env, &pair_1, token_a.max_blocks_old)?.checked_div(
@@ -283,22 +277,6 @@ pub fn query_redemption_rate(deps: Deps, env: Env) -> ContractResult<RedemptionR
 
     Ok(RedemptionRateResponse {
         redemption_rate: exchange_rate,
-        update_time: env.block.time.seconds(),
-    })
-}
-
-pub fn query_unbonding_period(deps: Deps, env: Env) -> ContractResult<UnbondingPeriodResponse> {
-    let config = CONFIG.load(deps.storage)?;
-    let core_config: Config = deps
-        .querier
-        .query_wasm_smart(config.core_contract.clone(), &QueryMsgDrop::Config {})?;
-
-    // Convert seconds to years (1 year = 31,536,000 seconds)
-    const SECONDS_PER_YEAR: u64 = 31_536_000;
-    let unbonding_period_years = core_config.unbonding_period as f64 / SECONDS_PER_YEAR as f64;
-
-    Ok(UnbondingPeriodResponse {
-        unbonding_period: unbonding_period_years as u64,
         update_time: env.block.time.seconds(),
     })
 }

@@ -75,7 +75,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
 
     // get the amount of LP tokens to mint
     let amount_to_mint =
-        get_mint_amount(config.clone(), deposit_value, total_value, existing_value)?;
+        get_mint_amount(config.clone(), deposit_value, existing_value)?;
 
     config.total_shares += amount_to_mint;
     CONFIG.save(deps.storage, &config)?;
@@ -151,7 +151,6 @@ pub fn withdraw(
             query_contract_balance(deps.as_ref(), env.clone(), config.pair_data.clone())?;
         let (withdrawal_messages, withdraw_amount_0, withdraw_amount_1) = get_withdrawal_messages(
             &env,
-            &deps,
             &config,
             amount,
             info.sender.to_string(),
@@ -297,7 +296,6 @@ pub fn handle_withdrawal_reply(
             let (withdrawal_messages, withdraw_amount_0, withdraw_amount_1) =
                 get_withdrawal_messages(
                     &env,
-                    &deps,
                     &config.clone(),
                     burn_amount,
                     beneficiary,
