@@ -56,6 +56,7 @@ fn setup_test_config() -> Config {
         oracle_contract: Addr::unchecked("oracle"),
         skew: false,
         imbalance: 0,
+        oracle_price_skew: 0i32,
     }
 }
 
@@ -102,6 +103,7 @@ fn test_update_config_unauthorized() {
         imbalance: None,
         skew: None,
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as non-owner
@@ -140,6 +142,7 @@ fn test_update_config_max_blocks_old() {
         imbalance: None,
         skew: None,
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as owner
@@ -185,6 +188,7 @@ fn test_update_config_deposit_cap() {
         imbalance: None,
         skew: None,
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as owner
@@ -229,6 +233,7 @@ fn test_update_config_timestamp_stale() {
         imbalance: None,
         skew: None,
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as owner
@@ -272,6 +277,7 @@ fn test_update_config_invalid_timestamp_stale() {
         imbalance: None,
         skew: None,
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as owner
@@ -327,6 +333,7 @@ fn test_update_config_fee_tier_config() {
         imbalance: None,
         skew: None,
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as owner
@@ -389,6 +396,7 @@ fn test_update_config_invalid_fee_tier_config() {
         imbalance: None,
         skew: None,
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as owner
@@ -427,6 +435,7 @@ fn test_update_config_paused() {
         imbalance: None,
         skew: None,
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as owner
@@ -471,6 +480,7 @@ fn test_update_config_imbalance() {
         imbalance: Some(new_imbalance),
         skew: None,
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as owner
@@ -514,6 +524,7 @@ fn test_update_config_skew() {
         imbalance: None,
         skew: Some(true),
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as owner
@@ -533,6 +544,49 @@ fn test_update_config_skew() {
     // Verify config was updated
     let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
     assert!(updated_config.skew);
+}
+#[test]
+fn test_update_config_oracle_price_skew() {
+    // Setup
+    let mut deps = mock_dependencies_with_custom_querier(setup_mock_querier());
+    let env = mock_env();
+    let config = setup_test_config();
+
+    // Store config
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    // Create update message to update skew
+    let update_msg = ConfigUpdateMsg {
+        whitelist: None,
+        max_blocks_old_token_a: None,
+        max_blocks_old_token_b: None,
+        deposit_cap: None,
+        timestamp_stale: None,
+        fee_tier_config: None,
+        paused: None,
+        imbalance: None,
+        skew: None,
+        oracle_contract: None,
+        oracle_price_skew: Some(100),
+    };
+
+    // Execute update_config as owner
+    let info = mock_info("owner", &[]);
+    let res = execute(
+        deps.as_mut(),
+        env.clone(),
+        info,
+        ExecuteMsg::UpdateConfig { update: update_msg },
+    )
+    .unwrap();
+
+    // Verify response
+    assert_eq!(res.attributes[0].key, "action");
+    assert_eq!(res.attributes[0].value, "update_config");
+
+    // Verify config was updated
+    let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(updated_config.oracle_price_skew, 100);
 }
 
 #[test]
@@ -568,6 +622,7 @@ fn test_update_config_all_fields() {
         imbalance: Some(50),
         skew: Some(true),
         oracle_contract: None,
+        oracle_price_skew: None,
     };
 
     // Execute update_config as owner
@@ -729,6 +784,7 @@ fn check_all_fields_tested(msg: &ConfigUpdateMsg) {
         imbalance: _,
         skew: _,
         oracle_contract: _,
+        oracle_price_skew: _,
     } = msg;
     // If a new field is added to ConfigUpdateMsg, this function will fail to compile
     // until the field is added here and tested in the test function

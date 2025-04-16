@@ -76,6 +76,8 @@ pub struct Config {
     pub skew: bool,
     /// the imbalance Factor indicated the rebalancing aggresiveness.
     pub imbalance: u32,
+    /// General skew to add to the final deposit index of the vault
+    pub oracle_price_skew: i32,
 }
 
 pub const CONFIG: Item<Config> = Item::new("data");

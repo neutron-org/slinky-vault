@@ -503,6 +503,11 @@ pub fn update_config(
         attrs.push(attr("oracle_contract", oracle_contract.to_string()));
     }
 
+    if let Some(oracle_price_skew) = update.oracle_price_skew {
+        config.oracle_price_skew = oracle_price_skew;
+        attrs.push(attr("oracle_price_skew", oracle_price_skew.to_string()));
+    }
+
     // Save updated config
     CONFIG.save(deps.storage, &config)?;
 

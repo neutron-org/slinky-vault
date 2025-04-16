@@ -36,6 +36,7 @@ pub struct InstantiateMsg {
     pub timestamp_stale: u64,
     pub paused: bool,
     pub oracle_contract: String,
+    pub oracle_price_skew: i32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
@@ -51,6 +52,7 @@ pub struct ConfigUpdateMsg {
     pub skew: Option<bool>,
     pub imbalance: Option<u32>,
     pub oracle_contract: Option<String>,
+    pub oracle_price_skew: Option<i32>,
 }
 
 impl InstantiateMsg {
