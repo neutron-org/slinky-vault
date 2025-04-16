@@ -137,6 +137,7 @@ pub fn get_deposit_data(
     base_deposit_percentage: u64,
     skew: bool,
     config_imbalance: u32,
+    config_oracle_price_skew: i32,
 ) -> Result<DepositResult, ContractError> {
     let computed_amount_0 = total_available_0.multiply_ratio(base_deposit_percentage, 100u128);
     let computed_amount_1 = total_available_1.multiply_ratio(base_deposit_percentage, 100u128);
@@ -213,7 +214,7 @@ pub fn get_deposit_data(
     let result = DepositResult {
         amount0: final_amount_0,
         amount1: final_amount_1,
-        tick_index: adjusted_tick_index,
+        tick_index: adjusted_tick_index + config_oracle_price_skew as i64,
         fee,
     };
     Ok(result)
@@ -464,6 +465,7 @@ pub fn get_deposit_messages(
         config.fee_tier_config.fee_tiers[0].percentage,
         config.skew,
         config.imbalance,
+        config.oracle_price_skew,
     )?;
     // Only create base deposit message if amounts are greater than zero
     if deposit_data.amount0 > Uint128::zero() || deposit_data.amount1 > Uint128::zero() {

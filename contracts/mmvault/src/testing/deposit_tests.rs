@@ -63,6 +63,7 @@ fn setup_test_config(env: Env) -> Config {
         pause_block: 0,
         skew: false,
         imbalance: 50u32,
+        oracle_price_skew: 0i32,
     }
 }
 
