@@ -83,7 +83,7 @@ pub fn instantiate(
         oracle_contract: oracle_contract.clone(),
         skew: false,
         imbalance: 50u32,
-        oracle_price_skew: 0i32,
+        oracle_price_skew: msg.oracle_price_skew,
     };
 
     // PAIRDATA.save(deps.storage, &pool_data)?;
