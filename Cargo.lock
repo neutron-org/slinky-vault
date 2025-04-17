@@ -804,6 +804,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
 
 [[package]]
+name = "lst-oracle"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-ownable",
+ "cw-storage-plus",
+ "cw2",
+ "neutron-std",
+ "prost 0.12.6",
+ "prost-types",
+ "schemars",
+ "serde",
+ "serde_json",
+ "test-case",
+ "thiserror 1.0.62",
+]
+
+[[package]]
 name = "mmvault"
 version = "0.1.0"
 dependencies = [
