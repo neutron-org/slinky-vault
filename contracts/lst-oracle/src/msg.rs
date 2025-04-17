@@ -18,7 +18,6 @@ pub enum QueryMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct UpdateConfig {
-    pub core_contract: Option<String>,
     pub d_asset_denom: Option<String>,
     pub redemption_rate: Option<PrecDec>,
 }
@@ -37,7 +36,6 @@ pub enum MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
-    pub core_contract: String,
     pub owner: String,
     pub d_asset_denom: String,
     pub redemption_rate: PrecDec,
