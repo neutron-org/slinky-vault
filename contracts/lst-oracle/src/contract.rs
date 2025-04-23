@@ -2,11 +2,9 @@ use crate::error::{ContractError, ContractResult};
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, UpdateConfig};
 use crate::state::{Config, CONFIG};
 use crate::utils::*;
-use cosmwasm_std::{
-    attr, entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response,
-};
-use cw2::{set_contract_version};
-use cw_ownable::{update_ownership};
+use cosmwasm_std::{attr, entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cw2::set_contract_version;
+use cw_ownable::update_ownership;
 use serde_json::to_vec;
 
 const CONTRACT_NAME: &str = concat!("crates.io:neutron-contracts__", env!("CARGO_PKG_NAME"));
@@ -26,9 +24,7 @@ pub fn instantiate(
     cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     cw_ownable::initialize_owner(deps.storage, deps.api, Some(msg.owner.as_ref()))?;
 
-    let core_contract = deps.api.addr_validate(&msg.core_contract)?;
     let config = &Config {
-        core_contract: core_contract.clone(),
         d_asset_denom: msg.d_asset_denom,
         redemption_rate: msg.redemption_rate,
     };
@@ -37,7 +33,10 @@ pub fn instantiate(
 
     Ok(Response::new()
         .add_attribute("action", "instantiate")
-        .add_attributes([attr("core contract", format!("{:?}", config.core_contract))]))
+        .add_attributes([attr(
+            "redemption rate",
+            format!("{:?}", config.redemption_rate),
+        )]))
 }
 
 ///////////////
@@ -103,10 +102,6 @@ fn execute_update_config(
         .map_err(|_| ContractError::UpdateOwnershipError)?;
     let mut config = CONFIG.load(deps.storage)?;
 
-    if let Some(core_contract) = new_config.core_contract {
-        let new_core_contract = deps.api.addr_validate(&core_contract)?;
-        config.core_contract = new_core_contract;
-    }
     if let Some(d_asset_denom) = new_config.d_asset_denom {
         config.d_asset_denom = d_asset_denom;
     }
@@ -119,7 +114,7 @@ fn execute_update_config(
     Ok(Response::new()
         .add_attribute("action", "update_config")
         .add_attributes([
-            attr("core contract", format!("{:?}", config.core_contract)),
             attr("d_asset_base", format!("{:?}", config.d_asset_denom)),
+            attr("redemption_rate", format!("{:?}", config.redemption_rate)),
         ]))
 }

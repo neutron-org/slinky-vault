@@ -1,6 +1,6 @@
 use crate::error::ContractError;
 use crate::msg::{CombinedPriceResponse, ConfigUpdateMsg, WithdrawPayload};
-use crate::state::{CONFIG, CREATE_TOKEN_REPLY_ID, WITHDRAW_REPLY_ID};
+use crate::state::{CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_ID, WITHDRAW_REPLY_ID};
 use crate::utils::*;
 use cosmwasm_std::{
     attr, Addr, Binary, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, SubMsgResult,
@@ -74,8 +74,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
     }
 
     // get the amount of LP tokens to mint
-    let amount_to_mint =
-        get_mint_amount(config.clone(), deposit_value, existing_value)?;
+    let amount_to_mint = get_mint_amount(config.clone(), deposit_value, existing_value)?;
 
     config.total_shares += amount_to_mint;
     CONFIG.save(deps.storage, &config)?;
@@ -225,8 +224,13 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
         balances[1].amount,
     )?;
 
+    let submessages: Vec<SubMsg> = messages
+        .into_iter()
+        .map(|msg| SubMsg::reply_always(msg, DEX_DEPOSIT_REPLY_ID))
+        .collect();
+
     Ok(Response::new()
-        .add_messages(messages)
+        .add_submessages(submessages)
         .add_attribute("action", "dex_deposit")
         .add_attribute("token_0_balance", balances[0].amount.to_string())
         .add_attribute("token_1_balance", balances[1].amount.to_string()))
