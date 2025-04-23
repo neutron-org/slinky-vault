@@ -1,9 +1,8 @@
 use crate::state::TokenData;
-use neutron_std::types::neutron::util::precdec::PrecDec;
 use cw_ownable::cw_ownable_execute;
+use neutron_std::types::neutron::util::precdec::PrecDec;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]

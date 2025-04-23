@@ -289,7 +289,7 @@ pub fn get_dasset_price(
     let redemption_rate_prec_dec = PrecDec::from_str(&redemption_rate.redemption_rate.to_string())
         .map_err(|_| ContractError::PrecDecConversionError)?;
     let lst_price_pure: PrecDec = base_price.checked_mul(redemption_rate_prec_dec)?;
-    
+
     Ok(lst_price_pure)
 }
 
