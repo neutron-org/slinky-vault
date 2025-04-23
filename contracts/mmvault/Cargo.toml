@@ -1,6 +1,6 @@
 [package]
 name = "mmvault"
-version = "0.1.0"
+version = "0.1.1"
 description = "market making vault"
 edition = { workspace = true }
 
