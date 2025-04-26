@@ -294,7 +294,7 @@ mod tests {
             &env,
             config,
             tick_index,
-            prices,
+            &prices,
             token0_balance,
             token1_balance,
         )
@@ -330,7 +330,7 @@ mod tests {
             &env,
             config.clone(),
             tick_index,
-            prices.clone(),
+            &prices.clone(),
             token0_balance,
             token1_balance,
         )
@@ -381,7 +381,7 @@ mod tests {
             &env,
             config,
             tick_index,
-            prices,
+            &prices,
             token0_balance,
             token1_balance,
         )
@@ -437,7 +437,7 @@ mod tests {
             &env,
             config.clone(),
             tick_index,
-            prices,
+            &prices,
             token0_balance,
             token1_balance,
         )
