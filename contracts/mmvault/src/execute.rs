@@ -219,7 +219,7 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
         &env,
         config.clone(),
         tick_index,
-        prices,
+        &prices,
         balances[0].amount,
         balances[1].amount,
     )?;
@@ -233,7 +233,8 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
         .add_submessages(submessages)
         .add_attribute("action", "dex_deposit")
         .add_attribute("token_0_balance", balances[0].amount.to_string())
-        .add_attribute("token_1_balance", balances[1].amount.to_string()))
+        .add_attribute("token_1_balance", balances[1].amount.to_string())
+        .add_attribute("price_0_to_1", prices.price_0_to_1.to_string()))
 }
 
 /// Privilaged function to perform a DEX withdrawal.
@@ -322,7 +323,7 @@ pub fn handle_withdrawal_reply(
                 &env,
                 config.clone(),
                 tick_index,
-                prices,
+                &prices,
                 balances[0].amount - withdraw_amount_0,
                 balances[1].amount - withdraw_amount_1,
             )?;

@@ -444,7 +444,7 @@ pub fn get_deposit_messages(
     env: &Env,
     config: Config,
     tick_index: i64,
-    prices: crate::msg::CombinedPriceResponse,
+    prices: &crate::msg::CombinedPriceResponse,
     token_0_balance: Uint128,
     token_1_balance: Uint128,
 ) -> Result<Vec<CosmosMsg>, ContractError> {
@@ -460,7 +460,7 @@ pub fn get_deposit_messages(
         token_1_balance,
         tick_index,
         config.fee_tier_config.fee_tiers[0].fee,
-        &prices,
+        prices,
         config.fee_tier_config.fee_tiers[0].percentage,
         config.skew,
         config.imbalance,
