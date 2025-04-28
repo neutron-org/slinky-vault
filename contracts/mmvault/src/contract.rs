@@ -234,13 +234,13 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
             if let Err(err) = msg.result.clone().into_result() {
                 // Log the error but don't propagate it
                 return Ok(Response::new()
-                    .add_attribute("action", "dex_deposit")
+                    .add_attribute("action", "dex_deposit_response")
                     .add_attribute("status", "error_handled")
                     .add_attribute("error", format!("{:?}", err)));
             }
             // If successful, just return an empty response
             Ok(Response::new()
-                .add_attribute("action", "dex_deposit")
+                .add_attribute("action", "dex_deposit_response")
                 .add_attribute("status", "success"))
         }
         id => Err(ContractError::UnknownReplyId { id }),
