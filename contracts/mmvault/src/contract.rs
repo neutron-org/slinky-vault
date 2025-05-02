@@ -213,17 +213,9 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
     match msg.id {
         CREATE_TOKEN_REPLY_ID => handle_create_token_reply(deps, msg.result),
         WITHDRAW_REPLY_ID => {
-            // Handle withdrawal reply
-            let response = msg.result.clone().into_result().unwrap();
-            let payload = WithdrawPayload::decode(
-                response
-                    .msg_responses
-                    .first()
-                    .ok_or(ContractError::NoReplyData)?
-                    .value
-                    .as_slice(),
-            )
-            .map_err(|_| ContractError::ParseError)?;
+            // Get the payload from the reply data
+            let payload = WithdrawPayload::decode(msg.payload.as_slice())
+                .map_err(|_| ContractError::ParseError)?;
 
             let amount =
                 Uint128::from_str(&payload.amount).map_err(|_| ContractError::ParseError)?;
