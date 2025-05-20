@@ -975,6 +975,79 @@ fn test_dex_deposit_success_uneven_prices() {
         }
     }
 }
+#[test]
+fn test_dex_deposit_success_uneven_prices_2() {
+    // Setup
+    let mut querier = setup_mock_querier();
+    let env = mock_env();
+    let token0_amount = 100000000u128;
+    let token1_amount = 100000000u128;
+    // Set up contract balances
+    querier.set_contract_balance(
+        env.contract.address.as_ref(),
+        vec![
+            Coin::new(token0_amount, "token0"),
+            Coin::new(token1_amount, "token1"),
+        ],
+    );
+    // Setup price data
+    let price_response = CombinedPriceResponse {
+        token_0_price: PrecDec::from_str("0.00000303486069").unwrap(),
+        token_1_price: PrecDec::from_str("0.000003144472586019259854412").unwrap(),
+        price_0_to_1: PrecDec::from_str("0.965141405109839783176469191").unwrap(),
+    };
+    // tick_index = -log(price) / log(1.0001);
+    // tick_index = -log(2) / log(1.0001)
+    // tick_index = -0.693147 / 0.00009999
+    // tick_index ≈ -6932
+    let expected_tick_index = 1000;
+    querier.set_price_response(price_response.clone());
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    let mut config = setup_test_config(env.clone());
+    config.fee_tier_config.fee_tiers = vec![
+        FeeTier {
+            fee: 10,
+            percentage: 30,
+        },
+        FeeTier {
+            fee: 20,
+            percentage: 70,
+        },
+    ];
+    // Store config
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    // Execute dex_deposit as whitelisted user
+    let info = mock_info("owner", &[]);
+
+    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::DexDeposit {}).unwrap();
+    // Verify response
+    assert_eq!(res.attributes.len(), 4);
+    assert_eq!(res.attributes[0].key, "action");
+    assert_eq!(res.attributes[0].value, "dex_deposit");
+    // Verify that deposit messages were created
+    assert!(!res.messages.is_empty());
+
+    // Verify the first message is a MsgDeposit
+    let first_msg = &res.messages[0];
+    let msg_data = first_msg.msg.clone();
+
+    for (i, msg) in res.messages.iter().enumerate() {
+        if let cosmwasm_std::CosmosMsg::Any(any_msg) = &msg.msg {
+            assert_eq!(any_msg.type_url, "/neutron.dex.MsgDeposit");
+
+            // Decode the protobuf message
+            let deposit_msg: MsgDeposit = prost::Message::decode(any_msg.value.as_slice()).unwrap();
+
+            // Get expected fee tier
+            let fee_tier = &config.fee_tier_config.fee_tiers[i];
+            println!("fee_tier {:?}", fee_tier);
+            println!("deposit_msg {:?}", deposit_msg);
+        } else {
+            panic!("Expected Any message, got something else");
+        }
+    }
+}
 
 #[test]
 fn test_dex_deposit_unauthorized() {

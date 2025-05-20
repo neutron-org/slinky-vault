@@ -64,6 +64,7 @@ use neutron_std::types::neutron::util::precdec::PrecDec;
 #[test_case(6000000, 4000000, 0, 100, "1", "1", "1", 10, true, 50u32, -8i32 => DepositResult { amount0: Uint128::new(1600000), amount1: Uint128::new(400000), tick_index: 12, fee: 100 }; "test double skew sequence -5")]
 #[test_case(5000000, 5000000, 0, 100, "1", "1", "1", 10, true, 50u32, 33i32 => DepositResult { amount0: Uint128::new(500000), amount1: Uint128::new(500000), tick_index: 33, fee: 100 }; "test double skew sequence -6")]
 #[test_case(5000000, 5000000, 0, 100, "1", "1", "1", 10, true, 50u32, -99i32 => DepositResult { amount0: Uint128::new(500000), amount1: Uint128::new(500000), tick_index: -99, fee: 100 }; "test double skew sequence -7")]
+#[test_case(1000000, 9000000, 0, 100, "1", "1", "1", 10, true, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(4900000), tick_index: -79, fee: 100 }; "test double skew sequence -8")]
 
 fn test_get_deposit_data(
     total_available_0: u128,

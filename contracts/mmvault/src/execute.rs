@@ -313,7 +313,6 @@ pub fn handle_withdrawal_reply(
             config.total_shares = config.total_shares.checked_sub(burn_amount)?;
             CONFIG.save(deps.storage, &config)?;
 
-            // update the deposited value
             let prices: CombinedPriceResponse = get_prices(deps.as_ref(), env.clone())?;
 
             let tick_index = price_to_tick_index(prices.price_0_to_1)?;

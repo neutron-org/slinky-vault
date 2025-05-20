@@ -152,7 +152,7 @@ pub fn get_deposit_data(
         .map_err(|_| ContractError::DecimalConversionError)?
         .checked_mul(prices.token_1_price)?;
 
-    // If the value of token0 is greater than token1, then we need to deposit more token0 depending in the `imbalance` config variable.
+    // If the value of token0 is greater than token1, then we need to deposit more token0 depending on the `imbalance` config variable.
     // We calculate the imbalance, and then use that to determine the amount of token0 to deposit.
     let (final_amount_0, final_amount_1) = if value_token_0 > value_token_1 {
         let imbalance = (value_token_0 - value_token_1) * PrecDec::percent(config_imbalance);
@@ -176,7 +176,7 @@ pub fn get_deposit_data(
                 .map_err(|_| ContractError::ConversionError)?;
         (final_0, final_1)
     } else {
-        // if the tokens are it complete balance, return the base deposit percentages of both tokens.
+        // if the tokens are in complete balance, return the base deposit percentages of both tokens.
         (computed_amount_0, computed_amount_1)
     };
 
@@ -236,7 +236,7 @@ pub fn calculate_adjusted_tick_index(
         return Ok(base_tick_index); // No adjustment if both values are zero
     }
 
-    // Calculate the maximum tick adjustment (fee-1)
+    // Calculate the maximum tick adjustment based on the fee tier (max = fee - 1)
     let max_adjustment = (fee as i64) - 1;
     if max_adjustment <= 0 {
         return Ok(base_tick_index); // No adjustment possible if fee <= 1
@@ -623,8 +623,8 @@ pub fn flatten_msgs_always_reply(
 }
 
 /// Get the withdrawal messages.
-/// This is used to burn get the message sequence for burning LP tokens and crediting
-/// the beneficiary with the proportinal value of the total funds in the contract.
+/// This is used to get the message sequence for burning LP tokens and crediting
+/// the beneficiary with the proportional value of the total funds in the contract.
 pub fn get_withdrawal_messages(
     env: &Env,
     config: &Config,

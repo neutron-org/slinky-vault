@@ -88,7 +88,6 @@ pub fn instantiate(
         oracle_price_skew: msg.oracle_price_skew,
     };
 
-    // PAIRDATA.save(deps.storage, &pool_data)?;
     CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new()
@@ -230,7 +229,7 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
                     .add_attribute("status", "error_handled")
                     .add_attribute("error", format!("{:?}", err)));
             }
-            // If successful, just return an empty response
+            // If successful return success status
             Ok(Response::new()
                 .add_attribute("action", "dex_deposit_response")
                 .add_attribute("status", "success"))
