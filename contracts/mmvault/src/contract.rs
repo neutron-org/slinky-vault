@@ -200,6 +200,18 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
             let balance = query_balance(deps, _env)?;
             Ok(balance)
         }
+        QueryMsg::SimulateProvideLiquidity {
+            amount_0,
+            amount_1,
+            sender,
+        } => {
+            let mint_amount = simulate_provide_liquidity(deps, _env, amount_0, amount_1, sender)?;
+            Ok(mint_amount)
+        }
+        QueryMsg::SimulateWithdrawLiquidity { amount } => {
+            let burn_amount = simulate_withdraw_liquidity(deps, _env, amount)?;
+            Ok(burn_amount)
+        }
     }
 }
 
