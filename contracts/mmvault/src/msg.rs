@@ -94,7 +94,7 @@ impl InstantiateMsg {
             total_percentage += tier.percentage;
         }
 
-        // Ensure total percentage is less than 100%
+        // Ensure total percentage is 100%
         if total_percentage != 100 {
             return Err(ContractError::InvalidFeeTier {
                 reason: "Total fee tier percentages must be == 100%".to_string(),
