@@ -2,7 +2,7 @@ use crate::{
     error::{ContractError, ContractResult},
     state::{Config, FeeTierConfig, TokenData},
 };
-use cosmwasm_std::{Coin, Response, Uint128};
+use cosmwasm_std::{Addr, Coin, Response, Uint128};
 use neutron_std::types::neutron::util::precdec::PrecDec;
 use prost::Message;
 use schemars::JsonSchema;
@@ -166,6 +166,14 @@ pub enum QueryMsg {
     GetConfig {},
     GetPrices {},
     GetBalance {},
+    SimulateProvideLiquidity {
+        amount_0: Uint128,
+        amount_1: Uint128,
+        sender: Addr,
+    },
+    SimulateWithdrawLiquidity {
+        amount: Uint128,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
