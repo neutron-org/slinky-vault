@@ -25,7 +25,7 @@ pub fn instantiate(
     cw_ownable::initialize_owner(deps.storage, deps.api, Some(msg.owner.as_ref()))?;
 
     let config = &Config {
-        d_asset_denom: msg.d_asset_denom,
+        lst_asset_denom: msg.lst_asset_denom,
         redemption_rate: msg.redemption_rate,
     };
 
@@ -102,8 +102,8 @@ fn execute_update_config(
         .map_err(|_| ContractError::UpdateOwnershipError)?;
     let mut config = CONFIG.load(deps.storage)?;
 
-    if let Some(d_asset_denom) = new_config.d_asset_denom {
-        config.d_asset_denom = d_asset_denom;
+    if let Some(d_asset_denom) = new_config.lst_asset_denom {
+        config.lst_asset_denom = d_asset_denom;
     }
     if let Some(redemption_rate) = new_config.redemption_rate {
         config.redemption_rate = redemption_rate;
@@ -114,7 +114,7 @@ fn execute_update_config(
     Ok(Response::new()
         .add_attribute("action", "update_config")
         .add_attributes([
-            attr("d_asset_base", format!("{:?}", config.d_asset_denom)),
+            attr("d_asset_base", format!("{:?}", config.lst_asset_denom)),
             attr("redemption_rate", format!("{:?}", config.redemption_rate)),
         ]))
 }

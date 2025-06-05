@@ -22,7 +22,7 @@ pub struct CombinedPriceResponse {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct Config {
-    pub d_asset_denom: String,
+    pub lst_asset_denom: String,
     pub redemption_rate: PrecDec,
 }
 
