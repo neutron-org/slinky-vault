@@ -184,7 +184,7 @@ pub fn get_prices(
     token_b: TokenData,
 ) -> ContractResult<CombinedPriceResponse> {
     let config = CONFIG.load(deps.storage)?;
-    // Helper function to get price or return 1 if the base is a USD denom
+    // create currency pairs for Slinky price query
     let pair_1 = CurrencyPair {
         base: token_a.pair.base.to_string(),
         quote: token_a.pair.quote.to_string(),
@@ -194,6 +194,7 @@ pub fn get_prices(
         quote: token_b.pair.quote.to_string(),
     };
 
+    // Helper function to get the slinky price (return 1 if the base is a USD denom)
     fn get_price_or_default(
         deps: &Deps,
         env: &Env,
@@ -233,6 +234,9 @@ pub fn get_prices(
         get_price_or_default(&deps, &env, &pair_2, token_b.max_blocks_old)?.checked_div(
             PrecDec::from_ratio(10u128.pow(token_b.decimals.into()), 1u128),
         )?;
+
+    // if the token_a is the lst asset, we need to multiply the price by the redemption rate.
+    // if the token_a is not the lst asset, we assume token_b is the lst asset and multiply the price by the redemption rate.
     if token_a.denom.eq(&config.lst_asset_denom.clone()) {
         token_0_price = token_0_price.checked_mul(config.redemption_rate)?;
     } else {
@@ -240,6 +244,7 @@ pub fn get_prices(
     }
     // Calculate the price ratio
     let price_0_to_1 = price_ratio(token_0_price, token_1_price);
+    // return the prices and their ratio
     let res = CombinedPriceResponse {
         token_0_price,
         token_1_price,
@@ -249,6 +254,7 @@ pub fn get_prices(
     Ok(res)
 }
 
+// Helper function to normalize the price to PrecDec
 pub fn normalize_price(price: Int128, decimals: u64) -> ContractResult<PrecDec> {
     // Ensure decimals does not exceed u32::MAX
     if decimals > u32::MAX as u64 {
