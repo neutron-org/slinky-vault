@@ -233,7 +233,7 @@ pub fn get_prices(
         get_price_or_default(&deps, &env, &pair_2, token_b.max_blocks_old)?.checked_div(
             PrecDec::from_ratio(10u128.pow(token_b.decimals.into()), 1u128),
         )?;
-    if token_a.denom.eq(&config.d_asset_denom.clone()) {
+    if token_a.denom.eq(&config.lst_asset_denom.clone()) {
         token_0_price = token_0_price.checked_mul(config.redemption_rate)?;
     } else {
         token_1_price = token_1_price.checked_mul(config.redemption_rate)?;
