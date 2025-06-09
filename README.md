@@ -69,7 +69,7 @@ unds and LP shares.
 ![dex_deposit](./docs/images/dex_deposit.png)
 ## withdrawal
 ![withdrawal](./docs/images/withdrawal.png)
-## wex_withdrawal
+## dex_withdrawal
 ![dex_withdrawal](./docs/images/dex_withdrawal.png)
 
 
