@@ -63,9 +63,13 @@ All deposits and withdrawals are issued on behalf of the vault (`creator` == `re
 unds and LP shares.
 
 ### System Architecture Flow
+## deposit
 ![Deposit](./docs/images/deposit.png)
+## dex_deposit
 ![dex_deposit](./docs/images/dex_deposit.png)
+## withdrawal
 ![withdrawal](./docs/images/withdrawal.png)
+## wex_withdrawal
 ![dex_withdrawal](./docs/images/dex_withdrawal.png)
 
 
