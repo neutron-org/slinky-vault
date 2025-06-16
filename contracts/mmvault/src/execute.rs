@@ -234,6 +234,8 @@ pub fn dex_deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Respons
         .add_attribute("action", "dex_deposit")
         .add_attribute("token_0_balance", balances[0].amount.to_string())
         .add_attribute("token_1_balance", balances[1].amount.to_string())
+        .add_attribute("price_0", prices.token_0_price.to_string())
+        .add_attribute("price_1", prices.token_1_price.to_string())
         .add_attribute("price_0_to_1", prices.price_0_to_1.to_string()))
 }
 
@@ -453,6 +455,7 @@ pub fn update_config(
     // Update deposit_cap if provided
     if let Some(deposit_cap) = update.deposit_cap {
         config.deposit_cap = deposit_cap;
+        attrs.push(attr("deposit_cap", deposit_cap.to_string()));
     }
 
     // Update timestamp_stale if provided
