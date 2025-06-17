@@ -26,8 +26,15 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     // Update contract version
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    // Save new config directly
-    CONFIG.save(deps.storage, &msg.config)?;
+    // Load existing config
+    let mut config = CONFIG.load(deps.storage)?;
+
+    // Only update config if a new one is provided
+    if let Some(new_config) = msg.config {
+        config = new_config;
+        // Save updated config
+        CONFIG.save(deps.storage, &config)?;
+    }
 
     Ok(Response::new()
         .add_attribute("action", "migrate")
