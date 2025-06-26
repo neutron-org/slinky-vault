@@ -74,7 +74,7 @@ pub struct Config {
     pub oracle_contract: Addr,
     /// whether to skew the AMM Deposits. If true, the AMM Deposit index will be skewed
     /// makING the over-supplied asset cheeper AND the under-supplied asset more expensive.
-    pub skew: bool,
+    pub skew: i32,
     /// the imbalance Factor indicated the rebalancing aggresiveness.
     pub imbalance: u32,
     /// General skew to add to the final deposit index of the vault

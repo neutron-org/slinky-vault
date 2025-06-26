@@ -60,7 +60,7 @@ fn setup_test_config(env: Env) -> Config {
         timestamp_stale: 1000000,
         paused: false,
         pause_block: 0,
-        skew: false,
+        skew: 0i32,
         imbalance: 50u32,
         oracle_price_skew: 0i32,
     }
@@ -1169,7 +1169,7 @@ fn test_dex_deposit_with_skew() {
     let mut config = setup_test_config(env.clone());
 
     // Enable skew
-    config.skew = true;
+    config.skew = 100i32;
 
     // Store config
     CONFIG.save(deps.as_mut().storage, &config).unwrap();
