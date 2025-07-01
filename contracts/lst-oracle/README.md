@@ -7,7 +7,7 @@ The LST (Liquid Staked Token) oracle provides pricing for liquid staked assets t
 It will return the price of the non-LST asset (eg: BTC) the price of the LST (eg: someBTC) as well as their ratio for the vault to use.
 
 ## Integration Flow
-![Integration Flow](../docs/images/lst_flow.png)
+![Integration Flow](../../docs/images/lst_flow.png)
 
 ## Key Features
 
