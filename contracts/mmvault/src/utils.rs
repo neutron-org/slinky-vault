@@ -1,3 +1,5 @@
+use std::vec;
+
 use crate::error::{ContractError, ContractResult};
 use crate::msg::{CombinedPriceResponse, DepositResult};
 use crate::state::{Config, PairData, TokenData, CONFIG, SHARES_MULTIPLIER};

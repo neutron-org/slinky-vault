@@ -4,24 +4,35 @@
 
 The LST (Liquid Staked Token) oracle provides pricing for liquid staked assets to the vault that integrates it. It uses Slinky to fetch underlying asset prices and applies configurable redemption rates to calculate the value of liquid staked token.
 
-It will return the price of the non-LST asset (eg: BTC) the price of the LST (eg: someBTC) as well as their quotiont for the vault to use.
+It will return the price of the non-LST asset (eg: BTC) the price of the LST (eg: someBTC) as well as their ratio for the vault to use.
 
 ## Integration Flow
 ![Integration Flow](../docs/images/lst_flow.png)
 
 ## Key Features
 
-- **Liquid Staked Token Pricing**: Get prices for LSTs by applying redemption rates to underlying asset prices
-- **Dual Token Price Queries**: Retrieve prices for two tokens simultaneously with their exchange ratio
-- **Slinky Oracle**: Use Slinky oracle for price feeds
-- **Price Validation**: Ensures base prices are recent and non-nil
-- **Configurable Redemption Rates**: Owner can update redemption rates as needed.
+- **Liquid Staked Token Pricing**: Get the price for the LST by applying a configurable redemption rate to underlying asset price
+- **Dual Token Price Queries**: Retrieve prices for two tokens simultaneously for the vault to use
+- **Slinky Oracle**: Use Slinky oracle as the main price feed
+- **Price Validation**: Ensure base prices are recent and non-nil
 
 ## Security Considerations
 
 - **Owner Controls**: The contract owner can update the redemption rate and LST asset denomination
 - **Oracle Dependency**: Relies on Slinky oracle availability and accuracy
-- **Redemption Rate Updates**: Manual updates required when redemption rate changes. 
+- **Redemption Rate Updates**: Manual updates required when redemption rate changes
+
+
+## How It Works
+
+1. **Price Queryy**: The contract queries the Slinky oracle for the underlying asset prices (e.g., LST/USDC)
+2. **Redemption Rate Application**: If one of the tokens is the configured LST asset, the contract multiplies its price by the redemption rate
+3. **Validation**: Ensures prices are:
+   - Recent (within `max_blocks_old` blocks)
+   - Non-nil (valid price data exists)
+   - From supported markets (available in Slinky oracle and marketmap)
+4. **Price Calculation**: Returns individual prices and their ratio for the vault's convenience
+
 
 ## Contract Interface
 
@@ -43,7 +54,7 @@ Retrieves prices for two tokens and their exchange ratio.
       "max_blocks_old": 100
     },
     "token_b": {
-      "denom": "DENOM FOR LST",
+      "denom": "DENOM_FOR_LST",
       "decimals": 6,
       "pair": {
         "base": "BTC",
@@ -58,9 +69,9 @@ Retrieves prices for two tokens and their exchange ratio.
 **Response:**
 ```json
 {
-  "token_0_price": "12.450000000000000000",
-  "token_1_price": "13.122500000000000000",
-  "price_0_to_1": "0.948764461832061068"
+  "token_0_price": "100000.00000000000000",
+  "token_1_price": "105000.00000000000000",
+  "price_0_to_1": "0.9523809542381"
 }
 ```
 
@@ -87,7 +98,7 @@ Updates the LST asset denomination and/or redemption rate.
 {
   "update_config": {
     "new_config": {
-      "lst_asset_denom": "stATOM",
+      "lst_asset_denom": "BTC_LST_DENOM",
       "redemption_rate": "1.054000000000000000"
     }
   }
@@ -131,19 +142,11 @@ neutrond q wasm contract-state smart [CONTRACT_ADDRESS] \
   --node https://rpc.neutron.org
 ```
 
-## How It Works
 
-1. **Price Discovery**: The contract queries the Slinky oracle for the underlying asset price (e.g., ATOM/USD)
-2. **Redemption Rate Application**: If one of the tokens is the configured LST asset, the contract multiplies its price by the redemption rate
-3. **Validation**: Ensures prices are:
-   - Recent (within `max_blocks_old` blocks)
-   - Non-nil (valid price data exists)
-   - From supported markets (available in Slinky oracle and marketmap)
-4. **Price Calculation**: Returns individual prices and their ratio for easy exchange rate calculation
 
 ## Error Handling
 
-The contract validates several conditions and will return errors if:
+The contract validates several conditions and will return an error if:
 
 - **UnsupportedMarket**: The requested currency pair is not available in Slinky oracle or marketmap
 - **PriceTooOld**: The price data is older than the specified `max_blocks_old`
