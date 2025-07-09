@@ -7,7 +7,8 @@ use crate::utils::{get_deposit_data, get_deposit_messages, price_to_tick_index};
 use cosmwasm_std::Uint128;
 use neutron_std::types::neutron::util::precdec::PrecDec;
 
-// (total_available_0, total_available_1, tick_index, fee, token_0_price, token_1_price, price_0_to_1, base_deposit_percentage, expected_result)
+// (total_available_0, total_available_1, tick_index, fee, token_0_price, token_1_price, price_0_to_1, base_deposit_percentage,
+// skew, imbalance, oracle_price_skew)
 // imbalance = 1900000 - 950000 / 2 = 475000 -> total = 50000 t0 , (100000 + 475000) t1
 #[test_case(1000000, 2000000, 0, 0, "1", "1", "1", 5, 0i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(50000), amount1: Uint128::new(600000), tick_index: 0, fee: 0 }; "imbalance case")]
 #[test_case(1000000, 2000000, 0, 0, "1", "1", "1", 0, 0i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(500000), tick_index: 0, fee: 0 }; "0% base deposit")]
@@ -65,15 +66,31 @@ use neutron_std::types::neutron::util::precdec::PrecDec;
 #[test_case(5000000, 5000000, 0, 100, "1", "1", "1", 10, 99, 50u32, 33i32 => DepositResult { amount0: Uint128::new(500000), amount1: Uint128::new(500000), tick_index: 33, fee: 100 }; "test double skew sequence -6")]
 #[test_case(5000000, 5000000, 0, 100, "1", "1", "1", 10, 99, 50u32, -99i32 => DepositResult { amount0: Uint128::new(500000), amount1: Uint128::new(500000), tick_index: -99, fee: 100 }; "test double skew sequence -7")]
 #[test_case(1000000, 9000000, 0, 100, "1", "1", "1", 10, 99, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(4900000), tick_index: -79, fee: 100 }; "test double skew sequence -8")]
-#[test_case(1000000, 1000000, 0, 0, "1", "1", "1", 10, 0i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(597500), tick_index: 0, fee: 0 }; "test oracle skew static -1")]
-#[test_case(1000000, 1000000, 0, 0, "1", "1", "1", 10, 10i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(597500), tick_index: 1, fee: 0 }; "test oracle skew static -2")]
-#[test_case(1000000, 1000000, 0, 0, "1", "1", "1", 10, 100i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(597500), tick_index: 10, fee: 0 }; "test oracle skew static -3")]
-#[test_case(1000000, 1000000, 0, 0, "1", "1", "1", 10, 1000i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(597500), tick_index: 100, fee: 0 }; "test oracle skew static -4")]
-#[test_case(1000000, 1000000, 0, 0, "1", "1", "1", 10, 10000i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(597500), tick_index: 1000, fee: 0 }; "test oracle skew static -5")]
-
-
-
-
+#[test_case(1000000, 1000000, 0, 0, "1", "1", "1", 10, 0i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(100000), tick_index: 0, fee: 0 }; "test oracle skew static -1")]
+#[test_case(1000000, 1000000, 0, 0, "1", "1", "1", 10, 10i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(100000), tick_index: 0, fee: 0 }; "test oracle skew static -2")]
+#[test_case(1000000, 1000000, 0, 0, "1", "1", "1", 10, 100i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(100000), tick_index: 0, fee: 0 }; "test oracle skew static -3")]
+#[test_case(1000000, 1000000, 0, 0, "1", "1", "1", 10, 1000i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(100000), tick_index: 0, fee: 0 }; "test oracle skew static -4")]
+#[test_case(1000000, 1000000, 0, 0, "1", "1", "1", 10, 10000i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(100000), tick_index: 0, fee: 0 }; "test oracle skew static -5")]
+#[test_case(1111111, 1000000, 0, 0, "1", "1", "1", 10, 10i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(166666), amount1: Uint128::new(100000), tick_index: 1, fee: 0 }; "test oracle skew static imbalanced light left-heavy -1")]
+#[test_case(1111111, 1000000, 0, 0, "1", "1", "1", 10, 100i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(166666), amount1: Uint128::new(100000), tick_index: 5, fee: 0 }; "test oracle skew static imbalanced light left-heavy -2")]
+#[test_case(1111111, 1000000, 0, 0, "1", "1", "1", 10, 1000i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(166666), amount1: Uint128::new(100000), tick_index: 53, fee: 0 }; "test oracle skew static imbalanced light left-heavy -3")]
+// imbalance @ 50% ((3000000 - 1000000) / (3000000 + 1000000)) = 0.5. skew @ 50%
+#[test_case(3000000, 1000000, 0, 0, "1", "1", "1", 10, 10i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(1300000), amount1: Uint128::new(100000), tick_index: 5, fee: 0 }; "test oracle skew static imbalanced more left-heavy -1")]
+#[test_case(3000000, 1000000, 0, 0, "1", "1", "1", 10, 100i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(1300000), amount1: Uint128::new(100000), tick_index: 50, fee: 0 }; "test oracle skew static imbalanced more left-heavy -2")]
+#[test_case(3000000, 1000000, 0, 0, "1", "1", "1", 10, 1000i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(1300000), amount1: Uint128::new(100000), tick_index: 500, fee: 0 }; "test oracle skew static imbalanced more left-heavy -3")]
+// imbalance @ 50% ((3000000 - 1000000) / (3000000 + 1000000)) = 0.5. skew @ 50%f
+#[test_case(3000000, 0, 0, 0, "1", "1", "1", 10, 10i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(1800000), amount1: Uint128::new(0), tick_index: 10, fee: 0 }; "test oracle skew static imbalanced fully left-heavy -1")]
+#[test_case(3000000, 0, 0, 0, "1", "1", "1", 10, 100i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(1800000), amount1: Uint128::new(0), tick_index: 100, fee: 0 }; "test oracle skew static imbalanced fully left-heavy -2")]
+#[test_case(3000000, 0, 0, 0, "1", "1", "1", 10, 1000i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(1800000), amount1: Uint128::new(0), tick_index: 1000, fee: 0 }; "test oracle skew static imbalanced fully left-heavy -3")]
+#[test_case(1000000, 1111111, 0, 0, "1", "1", "1", 10, 10i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(166666), tick_index: -1, fee: 0 }; "test oracle skew static imbalanced light right-heavy -1")]
+#[test_case(1000000, 1111111, 0, 0, "1", "1", "1", 10, 100i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(166666), tick_index: -5, fee: 0 }; "test oracle skew static imbalanced light right-heavy -2")]
+#[test_case(1000000, 1111111, 0, 0, "1", "1", "1", 10, 1000i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(166666), tick_index: -53, fee: 0 }; "test oracle skew static imbalanced light right-heavy -3")]
+#[test_case(1000000, 3000000, 0, 0, "1", "1", "1", 10, 10i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(1300000), tick_index: -5, fee: 0 }; "test oracle skew static imbalanced more right-heavy -1")]
+#[test_case(1000000, 3000000, 0, 0, "1", "1", "1", 10, 100i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(1300000), tick_index: -50, fee: 0 }; "test oracle skew static imbalanced more right-heavy -2")]
+#[test_case(1000000, 3000000, 0, 0, "1", "1", "1", 10, 1000i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(100000), amount1: Uint128::new(1300000), tick_index: -500, fee: 0 }; "test oracle skew static imbalanced more right-heavy -3")]
+#[test_case(0, 3000000, 0, 0, "1", "1", "1", 10, 10i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(1800000), tick_index: -10, fee: 0 }; "test oracle skew static imbalanced fully right-heavy -1")]
+#[test_case(0, 3000000, 0, 0, "1", "1", "1", 10, 100i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(1800000), tick_index: -100, fee: 0 }; "test oracle skew static imbalanced fully right-heavy -2")]
+#[test_case(0, 3000000, 0, 0, "1", "1", "1", 10, 1000i32, 50u32, 0i32 => DepositResult { amount0: Uint128::new(0), amount1: Uint128::new(1800000), tick_index: -1000, fee: 0 }; "test oracle skew static imbalanced fully right-heavy -3")]
 fn test_get_deposit_data(
     total_available_0: u128,
     total_available_1: u128,
