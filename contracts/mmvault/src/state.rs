@@ -72,13 +72,18 @@ pub struct Config {
     pub paused: bool,
     /// the oracle contract address. This contract will be used to get the price of the tokens.
     pub oracle_contract: Addr,
-    /// whether to skew the AMM Deposits. If true, the AMM Deposit index will be skewed
-    /// makING the over-supplied asset cheeper AND the under-supplied asset more expensive.
+    /// whether to skew the AMM Deposits. If >0 , the AMM Deposit index will be skewed
+    /// making the over-supplied asset cheeper AND the under-supplied asset more expensive.
     pub skew: i32,
     /// the imbalance Factor indicated the rebalancing aggresiveness.
     pub imbalance: u32,
-    /// General skew to add to the final deposit index of the vault
+    /// General flat skew to add to the final deposit index of the vault
     pub oracle_price_skew: i32,
+    /// the dynamic spread factor defines how quickly the undersupplied asset becomes more expensive
+    pub dynamic_spread_factor: i32,
+    /// the dynamic spread cap defines the maximum amount the undersupplied asset can be marked up in basis points.
+    pub dynamic_spread_cap: i32,
+
 }
 
 pub const CONFIG: Item<Config> = Item::new("data");

@@ -513,6 +513,34 @@ pub fn update_config(
         attrs.push(attr("oracle_price_skew", oracle_price_skew.to_string()));
     }
 
+    if let Some(dynamic_spread_factor) = update.dynamic_spread_factor {
+        // Validate dynamic_spread_factor bounds to prevent overflow/underflow
+        if dynamic_spread_factor < -10000 || dynamic_spread_factor > 10000 {
+            return Err(ContractError::InvalidConfig {
+                reason: format!(
+                    "dynamic_spread_factor must be between -10000 and 10000, got {}",
+                    dynamic_spread_factor
+                ),
+            });
+        }
+        config.dynamic_spread_factor = dynamic_spread_factor;
+        attrs.push(attr("dynamic_spread_factor", dynamic_spread_factor.to_string()));
+    }
+
+    if let Some(dynamic_spread_cap) = update.dynamic_spread_cap {
+        // Validate dynamic_spread_cap bounds to prevent overflow and ensure it's reasonable
+        if dynamic_spread_cap < 0 || dynamic_spread_cap > 100000 {
+            return Err(ContractError::InvalidConfig {
+                reason: format!(
+                    "dynamic_spread_cap must be between 0 and 100000, got {}",
+                    dynamic_spread_cap
+                ),
+            });
+        }
+        config.dynamic_spread_cap = dynamic_spread_cap;
+        attrs.push(attr("dynamic_spread_cap", dynamic_spread_cap.to_string()));
+    }
+
     // Save updated config
     CONFIG.save(deps.storage, &config)?;
 

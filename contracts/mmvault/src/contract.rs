@@ -93,6 +93,8 @@ pub fn instantiate(
         skew: 0,
         imbalance: 50u32,
         oracle_price_skew: msg.oracle_price_skew,
+        dynamic_spread_factor: msg.dynamic_spread_factor,
+        dynamic_spread_cap: msg.dynamic_spread_cap,
     };
 
     CONFIG.save(deps.storage, &config)?;

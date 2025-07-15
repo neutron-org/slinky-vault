@@ -1,6 +1,6 @@
 use crate::{
     error::{ContractError, ContractResult},
-    state::{Config, FeeTierConfig, TokenData},
+    state::{Config, FeeTierConfig, TokenData, FeeTier},
 };
 use cosmwasm_std::{Addr, Coin, Response, Uint128};
 use neutron_std::types::neutron::util::precdec::PrecDec;
@@ -37,6 +37,8 @@ pub struct InstantiateMsg {
     pub paused: bool,
     pub oracle_contract: String,
     pub oracle_price_skew: i32,
+    pub dynamic_spread_factor: i32,
+    pub dynamic_spread_cap: i32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
@@ -53,6 +55,8 @@ pub struct ConfigUpdateMsg {
     pub imbalance: Option<u32>,
     pub oracle_contract: Option<String>,
     pub oracle_price_skew: Option<i32>,
+    pub dynamic_spread_factor: Option<i32>,
+    pub dynamic_spread_cap: Option<i32>,
 }
 
 impl InstantiateMsg {
@@ -83,6 +87,27 @@ impl InstantiateMsg {
                 quote1: self.token_b.pair.quote.clone(),
             });
         }
+
+        // Validate dynamic_spread_factor bounds to prevent overflow/underflow
+        if self.dynamic_spread_factor < -10000 || self.dynamic_spread_factor > 10000 {
+            return Err(ContractError::InvalidConfig {
+                reason: format!(
+                    "dynamic_spread_factor must be between -10000 and 10000, got {}",
+                    self.dynamic_spread_factor
+                ),
+            });
+        }
+
+        // Validate dynamic_spread_cap bounds to prevent overflow and ensure it's reasonable
+        if self.dynamic_spread_cap < 0 || self.dynamic_spread_cap > 100000 {
+            return Err(ContractError::InvalidConfig {
+                reason: format!(
+                    "dynamic_spread_cap must be between 0 and 100000, got {}",
+                    self.dynamic_spread_cap
+                ),
+            });
+        }
+
         Ok(())
     }
 
@@ -188,7 +213,7 @@ pub struct DepositResult {
     pub amount0: Uint128,
     pub amount1: Uint128,
     pub tick_index: i64,
-    pub fee: u64,
+    pub fees: Vec<FeeTier>,
 }
 
 #[derive(Message, Clone, PartialEq)]
