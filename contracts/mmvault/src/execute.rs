@@ -524,7 +524,10 @@ pub fn update_config(
             });
         }
         config.dynamic_spread_factor = dynamic_spread_factor;
-        attrs.push(attr("dynamic_spread_factor", dynamic_spread_factor.to_string()));
+        attrs.push(attr(
+            "dynamic_spread_factor",
+            dynamic_spread_factor.to_string(),
+        ));
     }
 
     if let Some(dynamic_spread_cap) = update.dynamic_spread_cap {

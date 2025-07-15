@@ -1,6 +1,6 @@
 use crate::{
     error::{ContractError, ContractResult},
-    state::{Config, FeeTierConfig, TokenData, FeeTier},
+    state::{Config, FeeTier, FeeTierConfig, TokenData},
 };
 use cosmwasm_std::{Addr, Coin, Response, Uint128};
 use neutron_std::types::neutron::util::precdec::PrecDec;

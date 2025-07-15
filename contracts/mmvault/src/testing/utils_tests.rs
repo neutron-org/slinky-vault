@@ -176,7 +176,10 @@ fn test_get_deposit_data(
         Uint128::new(total_available_0),
         Uint128::new(total_available_1),
         tick_index,
-        vec![FeeTier { fee, percentage: 100 }],
+        vec![FeeTier {
+            fee,
+            percentage: 100,
+        }],
         &prices,
         base_deposit_percentage,
         skew,
@@ -514,7 +517,7 @@ mod tests {
         prices.price_0_to_1 = PrecDec::from_ratio(2u128, 1u128);
 
         let tick_index = 0;
- 
+
         // Equal token amounts but different values due to price
         let token0_balance = Uint128::new(1000000);
         let token1_balance = Uint128::new(1000000);
@@ -571,37 +574,37 @@ mod tests {
 // rounding error shoudl be ignored
 #[test_case(100, 0, 0.000001, vec![FeeTier { fee: 10, percentage: 100 }] => (0, vec![FeeTier { fee: 10, percentage: 100 }]); "very small imbalance below epsilon")]
 // Fee of 10. perfectly balanced, skew cap 100.
-// n = original tick index                   
-// c = static tick that doesn't change price 
-//         10          10                         
-// --|----------|----------|----------           
-//   c          n         c+20                  
-// 11% imabalnced linarly, move fee to 11. fee adjusted by 1  
-//          11         11                       
-// -|-----------|-----------|------          
-//   c-1        n         c+21                
+// n = original tick index
+// c = static tick that doesn't change price
+//         10          10
+// --|----------|----------|----------
+//   c          n         c+20
+// 11% imabalnced linarly, move fee to 11. fee adjusted by 1
+//          11         11
+// -|-----------|-----------|------
+//   c-1        n         c+21
 // Then move deposit index by the adjustement amount (-1)
-//          11         11                       
-// --|-----------|-----------|------          
-//   c            n         c+22          
+//          11         11
+// --|-----------|-----------|------
+//   c            n         c+22
 #[test_case(100, 0, 0.01, vec![FeeTier { fee: 10, percentage: 100 }] => (-1, vec![FeeTier { fee: 11, percentage: 100 }]); "linear movement small imbalance -1")]
 // Fee of 10. perfectly balanced, skew cap 100.
-// n = original tick index                   
-// c = static tick that doesn't change price 
-//          10    10                         
-// -------|-----|-----|----------           
-//        c     n     c+20                  
+// n = original tick index
+// c = static tick that doesn't change price
+//          10    10
+// -------|-----|-----|----------
+//        c     n     c+20
 // 10% imabalnced linarly, make imbalanced tick more expensive by 10% of the cap (10 bps)
 // mincrease spread by 5, then move distribution by another 5.
 // new fee is 15 (10 + 5), ticked inex moved by another 5
-//          15     15                       
-// -----|-------|-------|------          
-//   c-5        n       c+25                
+//          15     15
+// -----|-------|-------|------
+//   c-5        n       c+25
 // Then move deposit index by the adjustement amount (-5)
-//             15     15                       
-// --------|-------|-------|------          
+//             15     15
+// --------|-------|-------|------
 //         c       n      c+30
-// n and c remain identical, imbalanced index moved by 10      
+// n and c remain identical, imbalanced index moved by 10
 #[test_case(100, 0, 0.1, vec![FeeTier { fee: 10, percentage: 100 }] => (-5, vec![FeeTier { fee: 15, percentage: 100 }]); "linear movement positive imbalance -1")]
 #[test_case(100, 0, 0.2, vec![FeeTier { fee: 10, percentage: 100 }] => (-10, vec![FeeTier { fee: 20, percentage: 100 }]); "linear movement positive imbalance -2")]
 #[test_case(100, 0, 0.3, vec![FeeTier { fee: 10, percentage: 100 }] => (-15, vec![FeeTier { fee: 25, percentage: 100 }]); "linear movement positive imbalance -3")]
@@ -610,19 +613,19 @@ mod tests {
 #[test_case(100, 0, 0.6, vec![FeeTier { fee: 10, percentage: 100 }] => (-30, vec![FeeTier { fee: 40, percentage: 100 }]); "linear movement positive imbalance -6")]
 #[test_case(100, 0, 0.7, vec![FeeTier { fee: 10, percentage: 100 }] => (-35, vec![FeeTier { fee: 45, percentage: 100 }]); "linear movement positive imbalance -7")]
 // Fee of 10. perfectly balanced, skew cap 100.
-// n = original tick index                   
-// c = static tick that doesn't change price 
-//                  10    10                         
-// ---------------|-----|-----|----------           
-//                c     n     c+20                  
+// n = original tick index
+// c = static tick that doesn't change price
+//                  10    10
+// ---------------|-----|-----|----------
+//                c     n     c+20
 // 80% imabalnced linarly, move fee to 20. fee adjusted by 80
-//           90               90                       
-// --|------------------|----------------|------          
-//   c-80               n               c+100                
+//           90               90
+// --|------------------|----------------|------
+//   c-80               n               c+100
 // Then move deposit index by the adjustement amount (-80)
-//            20          20               
-// -----------------|------------------|--------------------|------    
-//                  c                 n+80                 c+180   
+//            20          20
+// -----------------|------------------|--------------------|------
+//                  c                 n+80                 c+180
 #[test_case(100, 0, 0.8, vec![FeeTier { fee: 10, percentage: 100 }] => (-40, vec![FeeTier { fee: 50, percentage: 100 }]); "linear movement positive imbalance -8")]
 #[test_case(100, 0, 0.9, vec![FeeTier { fee: 10, percentage: 100 }] => (-45, vec![FeeTier { fee: 55, percentage: 100 }]); "linear movement positive imbalance -9")]
 #[test_case(100, 0, 1.0, vec![FeeTier { fee: 10, percentage: 100 }] => (-50, vec![FeeTier { fee: 60, percentage: 100 }]); "linear movement positive imbalance -10")]
@@ -669,69 +672,58 @@ mod tests {
 #[test_case(100, 0, 0.0, vec![FeeTier { fee: 10, percentage: 100 }] => (0, vec![FeeTier { fee: 10, percentage: 100 }]); "zero imbalance should return no adjustment")]
 #[test_case(100, 0, f64::EPSILON / 2.0, vec![FeeTier { fee: 10, percentage: 100 }] => (0, vec![FeeTier { fee: 10, percentage: 100 }]); "imbalance below epsilon should return no adjustment")]
 #[test_case(100, 0, -f64::EPSILON / 2.0, vec![FeeTier { fee: 10, percentage: 100 }] => (0, vec![FeeTier { fee: 10, percentage: 100 }]); "negative imbalance below epsilon should return no adjustment")]
-
 // Edge Case Category 2: Extreme Factor Values (using actual expected results)
 #[test_case(100, -10000, 0.5, vec![FeeTier { fee: 10, percentage: 100 }] => (0, vec![FeeTier { fee: 10, percentage: 100 }]); "very large negative factor produces no effect due to underflow")]
 #[test_case(100, 10000, 0.5, vec![FeeTier { fee: 10, percentage: 100 }] => (-50, vec![FeeTier { fee: 60, percentage: 100 }]); "very large positive factor saturates to maximum")]
 #[test_case(100, -1, 0.5, vec![FeeTier { fee: 10, percentage: 100 }] => (-25, vec![FeeTier { fee: 35, percentage: 100 }]); "factor -1 exponential case")]
 #[test_case(100, 1, 0.5, vec![FeeTier { fee: 10, percentage: 100 }] => (-25, vec![FeeTier { fee: 35, percentage: 100 }]); "factor 1 logarithmic case")]
-
 // Edge Case Category 3: Maximum Imbalance
 #[test_case(100, 0, 1.0, vec![FeeTier { fee: 10, percentage: 100 }] => (-50, vec![FeeTier { fee: 60, percentage: 100 }]); "maximum positive imbalance linear")]
 #[test_case(100, 0, -1.0, vec![FeeTier { fee: 10, percentage: 100 }] => (50, vec![FeeTier { fee: 60, percentage: 100 }]); "maximum negative imbalance linear")]
 #[test_case(100, -100, 1.0, vec![FeeTier { fee: 10, percentage: 100 }] => (-50, vec![FeeTier { fee: 60, percentage: 100 }]); "maximum positive imbalance exponential")]
 #[test_case(100, 100, 1.0, vec![FeeTier { fee: 10, percentage: 100 }] => (-50, vec![FeeTier { fee: 60, percentage: 100 }]); "maximum positive imbalance logarithmic")]
-
 // Edge Case Category 4: Fee Tier Edge Cases
 #[test_case(100, 0, 0.5, vec![FeeTier { fee: 0, percentage: 100 }] => (-25, vec![FeeTier { fee: 25, percentage: 100 }]); "zero base fee with positive adjustment")]
 #[test_case(50, 0, 0.5, vec![FeeTier { fee: 10, percentage: 100 }] => (-13, vec![FeeTier { fee: 23, percentage: 100 }]); "adjustment result with small cap")]
 #[test_case(100, 0, -0.5, vec![FeeTier { fee: 10, percentage: 100 }] => (25, vec![FeeTier { fee: 35, percentage: 100 }]); "negative imbalance should increase fee")]
 #[test_case(60, 0, -0.5, vec![FeeTier { fee: 10, percentage: 100 }] => (15, vec![FeeTier { fee: 25, percentage: 100 }]); "negative imbalance fee adjustment")]
-
 // Edge Case Category 5: Multiple Fee Tiers
 #[test_case(100, 0, 0.5, vec![FeeTier { fee: 1, percentage: 50 }, FeeTier { fee: 5, percentage: 30 }, FeeTier { fee: 10, percentage: 20 }] => (-25, vec![FeeTier { fee: 26, percentage: 50 }, FeeTier { fee: 30, percentage: 30 }, FeeTier { fee: 35, percentage: 20 }]); "multiple fee tiers all adjusted equally")]
 #[test_case(40, 0, 0.5, vec![FeeTier { fee: 0, percentage: 100 }, FeeTier { fee: 50, percentage: 0 }] => (-10, vec![FeeTier { fee: 10, percentage: 100 }, FeeTier { fee: 60, percentage: 0 }]); "fee tiers with zero percentage")]
-
 // Edge Case Category 6: Small Spread Caps (Precision Testing)
 #[test_case(1, 0, 0.5, vec![FeeTier { fee: 10, percentage: 100 }] => (0, vec![FeeTier { fee: 10, percentage: 100 }]); "spread cap 1 with 50% imbalance should round to 0")]
 #[test_case(1, 0, 1.0, vec![FeeTier { fee: 10, percentage: 100 }] => (-1, vec![FeeTier { fee: 11, percentage: 100 }]); "spread cap 1 with 100% imbalance should adjust fee by 1")]
 #[test_case(2, 0, 0.5, vec![FeeTier { fee: 10, percentage: 100 }] => (-1, vec![FeeTier { fee: 11, percentage: 100 }]); "spread cap 2 with 50% imbalance")]
 #[test_case(3, 0, 0.33, vec![FeeTier { fee: 10, percentage: 100 }] => (0, vec![FeeTier { fee: 10, percentage: 100 }]); "spread cap 3 with 33% imbalance should round")]
-
 // Edge Case Category 7: Convergence Testing (using actual results)
 #[test_case(100, -50, 1.0, vec![FeeTier { fee: 10, percentage: 100 }] => (-50, vec![FeeTier { fee: 60, percentage: 100 }]); "exponential factor -50 at max imbalance")]
 #[test_case(100, 0, 1.0, vec![FeeTier { fee: 10, percentage: 100 }] => (-50, vec![FeeTier { fee: 60, percentage: 100 }]); "linear factor 0 at max imbalance")]
 #[test_case(100, 50, 1.0, vec![FeeTier { fee: 10, percentage: 100 }] => (-50, vec![FeeTier { fee: 60, percentage: 100 }]); "logarithmic factor 50 at max imbalance")]
-
 // Edge Case Category 8: Boundary Conditions for Curve Types
 #[test_case(100, -1, 0.1, vec![FeeTier { fee: 10, percentage: 100 }] => (-5, vec![FeeTier { fee: 15, percentage: 100 }]); "exponential factor -1 small imbalance")]
 #[test_case(100, 1, 0.1, vec![FeeTier { fee: 10, percentage: 100 }] => (-5, vec![FeeTier { fee: 15, percentage: 100 }]); "logarithmic factor 1 small imbalance")]
 #[test_case(100, -100, 0.1, vec![FeeTier { fee: 10, percentage: 100 }] => (-1, vec![FeeTier { fee: 11, percentage: 100 }]); "exponential factor -100 very small imbalance")]
 #[test_case(100, 100, 0.1, vec![FeeTier { fee: 10, percentage: 100 }] => (-8, vec![FeeTier { fee: 18, percentage: 100 }]); "logarithmic factor 100 small imbalance")]
-
 // Edge Case Category 9: Fee Underflow Protection
 #[test_case(200, 0, -0.5, vec![FeeTier { fee: 50, percentage: 100 }] => (50, vec![FeeTier { fee: 100, percentage: 100 }]); "large negative imbalance should not underflow fee")]
 #[test_case(1000, 0, -0.1, vec![FeeTier { fee: 10, percentage: 100 }] => (50, vec![FeeTier { fee: 60, percentage: 100 }]); "small negative imbalance with large cap")]
-
 // Edge Case Category 10: Extreme Precision Cases
 #[test_case(1000000, 0, 0.000001, vec![FeeTier { fee: 100, percentage: 100 }] => (-1, vec![FeeTier { fee: 101, percentage: 100 }]); "very large cap with tiny imbalance")]
 #[test_case(1, 0, 0.999999, vec![FeeTier { fee: 100, percentage: 100 }] => (0, vec![FeeTier { fee: 100, percentage: 100 }]); "tiny cap with near-max imbalance should round to 0 tick adjustment")]
-
 // Edge Case Category 11: Special Mathematical Cases
 #[test_case(100, -100, 0.5, vec![FeeTier { fee: 10, percentage: 100 }] => (-13, vec![FeeTier { fee: 23, percentage: 100 }]); "exponential with very large negative factor")]
 #[test_case(50, 0, 1.0, vec![FeeTier { fee: 5, percentage: 100 }] => (-25, vec![FeeTier { fee: 30, percentage: 100 }]); "small cap at maximum imbalance")]
 #[test_case(2, 0, 1.0, vec![FeeTier { fee: 1, percentage: 100 }] => (-1, vec![FeeTier { fee: 2, percentage: 100 }]); "very small cap at maximum imbalance")]
-
-// feel-good tests based on formula outputs: 
+// feel-good tests based on formula outputs:
 // dynamic_spread_cap = 300
 // validate curve at spread factor +/-(1, 10, 30, 100, 1000, 3000)
 // at imabalnce ratios: +/1[0, 0.01, 0.1, 0,2, 0,49, 0.5, 0.75, 0.9, 0.99, 1.0]
 /// Exponential case: factor < 0 (slow then fast):
 /// g(x) = (1 - (1-x)^(1+q)) * c  where q = |factor|/100
-/// 
+///
 /// Logarithmic case: factor > 0 (fast then slow):
 /// h(x) = (1 - e^(-x*n)) * c / (1 - e^(-n))  where n = factor/100
-/// 
+///
 
 /// Logarithmic case:
 /// //factor 1 - positive imabalnce
@@ -964,7 +956,7 @@ fn test_calculate_dynamic_spread_adjustment_edge_cases(
     fee_tiers: Vec<FeeTier>,
 ) -> (i64, Vec<FeeTier>) {
     use crate::utils::calculate_dynamic_spread_adjustment;
-    
+
     println!("=== EDGE CASE TEST ===");
     println!("dynamic_spread_cap: {}", dynamic_spread_cap);
     println!("dynamic_spread_factor: {}", dynamic_spread_factor);
@@ -979,18 +971,26 @@ fn test_calculate_dynamic_spread_adjustment_edge_cases(
     );
 
     println!("Result: {:?}", result);
-    
+
     // Additional validation that should always hold
     let (tick_adj, modified_fees) = &result;
-    
+
     // Tick adjustment should be reasonably bounded by spread cap
-    assert!(tick_adj.abs() <= dynamic_spread_cap as i64, 
-            "Tick adjustment {} exceeds spread cap {}", tick_adj, dynamic_spread_cap);
-    
+    assert!(
+        tick_adj.abs() <= dynamic_spread_cap as i64,
+        "Tick adjustment {} exceeds spread cap {}",
+        tick_adj,
+        dynamic_spread_cap
+    );
+
     // All fees should be non-negative due to max(0, fee + adj) protection
     for fee_tier in modified_fees {
-        assert!(fee_tier.fee >= 0, "Fee tier fee should never be negative: {}", fee_tier.fee);
+        assert!(
+            fee_tier.fee >= 0,
+            "Fee tier fee should never be negative: {}",
+            fee_tier.fee
+        );
     }
-    
+
     result
 }

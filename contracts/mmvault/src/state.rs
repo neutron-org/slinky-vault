@@ -83,7 +83,6 @@ pub struct Config {
     pub dynamic_spread_factor: i32,
     /// the dynamic spread cap defines the maximum amount the undersupplied asset can be marked up in basis points.
     pub dynamic_spread_cap: i32,
-
 }
 
 pub const CONFIG: Item<Config> = Item::new("data");
