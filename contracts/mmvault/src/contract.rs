@@ -3,7 +3,7 @@ use crate::execute::*;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload};
 use crate::query::*;
 use crate::state::{
-    Config, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_ID, WITHDRAW_REPLY_ID,
+    Config, PairData, CONFIG, OLD_CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_ID, WITHDRAW_REPLY_ID,
 };
 use crate::utils::*;
 use cosmwasm_std::{
@@ -26,15 +26,23 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     // Update contract version
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    // Load existing config
-    let mut config = CONFIG.load(deps.storage)?;
+    // Try to load existing config as new format
+    let mut config = match CONFIG.load(deps.storage) {
+        Ok(config) => config,
+        Err(_) => {
+            // If loading new format fails, try loading as old format and convert
+            let old_config = OLD_CONFIG.load(deps.storage)?;
+            old_config.into()
+        }
+    };
 
     // Only update config if a new one is provided
     if let Some(new_config) = msg.config {
         config = new_config;
-        // Save updated config
-        CONFIG.save(deps.storage, &config)?;
     }
+    
+    // Save the config in the new format. this could be an updated config.
+    CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new()
         .add_attribute("action", "migrate")
