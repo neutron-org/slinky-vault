@@ -172,9 +172,9 @@ impl InstantiateMsg {
 pub enum ExecuteMsg {
     // deposit funds to use for market making
     Deposit {},
-    // withdraw free unutilised funds
+    // free and withdraw funds instantly, amount is in LP tokens
     Withdraw { amount: Uint128 },
-    // Creates new AMM deposits using contract funds
+    // Creates new AMM deposits using contract funds, amount is in token_a and token_b
     DexDeposit {},
     // Cancels and withdraws all active AMM deposits
     DexWithdrawal {},

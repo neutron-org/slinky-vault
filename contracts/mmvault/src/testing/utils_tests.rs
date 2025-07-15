@@ -8,46 +8,6 @@ use crate::utils::{get_deposit_data, get_deposit_messages, price_to_tick_index};
 use cosmwasm_std::Uint128;
 use neutron_std::types::neutron::util::precdec::PrecDec;
 
-// =============================================================================
-// CRITICAL EDGE CASES FOR calculate_dynamic_spread_adjustment FUNCTION
-// =============================================================================
-//
-// When calling calculate_dynamic_spread_adjustment, developers must be careful with:
-//
-// 1. PARAMETER VALIDATION:
-//    - dynamic_spread_cap = 0: Function returns no adjustment (early exit)
-//    - imbalance_f64 ≈ 0 (< f64::EPSILON): Function returns no adjustment
-//    - Very large |dynamic_spread_factor| (±10000): Should not cause overflow
-//
-// 2. MATHEMATICAL STABILITY:
-//    - Exponential curve (factor < 0): x^(1+q) can overflow with large q
-//    - Logarithmic curve (factor > 0): Division by (1-e^(-n)) approaches 0 as n→0
-//    - Extreme imbalance (±1.0): All curves should converge to same cap value
-//
-// 3. FEE TIER SAFETY:
-//    - Zero base fees: Adjustment can only increase fees (max(0, fee + adj))
-//    - Multiple fee tiers: All tiers adjusted by same amount
-//    - Large adjustments: Fee overflow protection prevents negative fees
-//
-// 4. PRECISION ISSUES:
-//    - Small caps (1-3): Rounding may result in no adjustment
-//    - Large caps (>1000): Precision loss in f64 calculations
-//    - Very small imbalances: May round to zero adjustment
-//
-// 5. CONVERGENCE REQUIREMENTS:
-//    - At imbalance = ±1.0: All curve types should produce similar results
-//    - Linear (factor=0): f(x) = x * cap
-//    - Exponential (factor<0): f(x) = x^(1+|factor|/100) * cap
-//    - Logarithmic (factor>0): f(x) = (1-e^(-x*factor/100))/(1-e^(-factor/100)) * cap
-//
-// 6. INVARIANTS THAT MUST HOLD:
-//    - |tick_adjustment| ≤ spread_cap/2 (approximately, due to rounding)
-//    - |fee_adjustment| ≤ spread_cap/2 (approximately, due to rounding)
-//    - All output fees ≥ 0 (enforced by max(0, fee + adjustment))
-//    - Total effect = |tick_adj| + |fee_adj| ≈ spread_cap * |imbalance| / 2
-//
-// =============================================================================
-
 // (total_available_0, total_available_1, tick_index, fee, token_0_price, token_1_price, price_0_to_1, base_deposit_percentage,
 // skew, imbalance, oracle_price_skew, dynamic_spread_factor, dynamic_spread_cap)
 // imbalance = 1900000 - 950000 / 2 = 475000 -> total = 50000 t0 , (100000 + 475000) t1
