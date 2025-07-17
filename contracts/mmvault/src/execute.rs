@@ -333,8 +333,8 @@ pub fn handle_withdrawal_reply(
                 .add_messages(messages)
                 .add_attribute("action", "withdrawal_reply_success")
                 .add_attribute("next_action", "create_new_deposit")
-                .add_attribute("withdrawn_token_0", withdraw_amount_0.to_string())
-                .add_attribute("withdrawn_token_1", withdraw_amount_1.to_string())
+                .add_attribute("withdraw_amount_0", withdraw_amount_0.to_string())
+                .add_attribute("withdraw_amount_1", withdraw_amount_1.to_string())
                 .add_attribute("shares_burned", burn_amount.to_string())
                 .add_attribute("total_shares", config.total_shares.to_string()))
         }
