@@ -61,7 +61,7 @@ fn setup_test_config(env: Env) -> Config {
         last_executed: 0,
         pause_block: 0,
         paused: false,
-        skew: false,
+        skew: 0i32,
         imbalance: 50,
         oracle_price_skew: 0i32,
     }

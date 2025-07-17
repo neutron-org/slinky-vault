@@ -70,7 +70,7 @@ fn setup_test_config(env: Env) -> Config {
         timestamp_stale: 1000000,
         paused: false,
         pause_block: 0,
-        skew: false,
+        skew: 0i32,
         imbalance: 50u32,
         oracle_price_skew: 0i32,
     }

@@ -137,7 +137,7 @@ pub fn get_deposit_data(
     fee: u64,
     prices: &CombinedPriceResponse,
     base_deposit_percentage: u64,
-    skew: bool,
+    skew: i32,
     config_imbalance: u32,
     config_oracle_price_skew: i32,
 ) -> Result<DepositResult, ContractError> {
@@ -207,8 +207,8 @@ pub fn get_deposit_data(
         .checked_mul(prices.token_1_price)?;
 
     // If skew is enabled, calculate the adjusted tick index based on the value imbalance
-    let adjusted_tick_index = if skew {
-        calculate_adjusted_tick_index(tick_index, fee, total_value_token_0, total_value_token_1)?
+    let adjusted_tick_index = if skew != 0 {
+        calculate_adjusted_tick_index(tick_index, skew, total_value_token_0, total_value_token_1)?
     } else {
         tick_index
     };
@@ -229,7 +229,7 @@ pub fn get_deposit_data(
 /// If token1 value dominates tick index is linearly decreased (up to fee-1)
 pub fn calculate_adjusted_tick_index(
     base_tick_index: i64,
-    fee: u64,
+    skew: i32,
     value_token_0: PrecDec,
     value_token_1: PrecDec,
 ) -> Result<i64, ContractError> {
@@ -238,24 +238,18 @@ pub fn calculate_adjusted_tick_index(
         return Ok(base_tick_index); // No adjustment if both values are zero
     }
 
-    // Calculate the maximum tick adjustment based on the fee tier (max = fee - 1)
-    let max_adjustment = (fee as i64) - 1;
-    if max_adjustment <= 0 {
-        return Ok(base_tick_index); // No adjustment possible if fee <= 1
-    }
-
     // Calculate the total value
     let total_value = value_token_0.checked_add(value_token_1)?;
 
     // Handle edge cases
     if value_token_0.is_zero() {
-        // Token1 completely dominates, move tick down by max_adjustment
-        return Ok(base_tick_index - max_adjustment);
+        // Token1 completely dominates, move index down by the whole skew
+        return Ok(base_tick_index - skew as i64);
     }
 
     if value_token_1.is_zero() {
-        // Token0 completely dominates, move tick up by max_adjustment
-        return Ok(base_tick_index + max_adjustment);
+        // Token0 completely dominates, move index up by the whole skew
+        return Ok(base_tick_index + skew as i64);
     }
 
     // Calculate the imbalance ratio (-1.0 to 1.0)
@@ -285,8 +279,8 @@ pub fn calculate_adjusted_tick_index(
     };
 
     // Calculate the adjustment linearly based on the imbalance
-    let adjustment = (imbalance_f64 * max_adjustment as f64).round() as i64;
-
+    let adjustment = (imbalance_f64 * skew as f64).round() as i64;
+ 
     // Apply the adjustment to the base tick index
     Ok(base_tick_index + adjustment)
 }

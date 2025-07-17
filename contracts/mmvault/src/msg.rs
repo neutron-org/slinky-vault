@@ -49,7 +49,7 @@ pub struct ConfigUpdateMsg {
     pub timestamp_stale: Option<u64>,
     pub fee_tier_config: Option<FeeTierConfig>,
     pub paused: Option<bool>,
-    pub skew: Option<bool>,
+    pub skew: Option<i32>,
     pub imbalance: Option<u32>,
     pub oracle_contract: Option<String>,
     pub oracle_price_skew: Option<i32>,

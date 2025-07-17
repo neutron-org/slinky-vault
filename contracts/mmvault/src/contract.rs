@@ -90,7 +90,7 @@ pub fn instantiate(
         timestamp_stale: msg.timestamp_stale,
         paused: msg.paused,
         oracle_contract: oracle_contract.clone(),
-        skew: false,
+        skew: 0,
         imbalance: 50u32,
         oracle_price_skew: msg.oracle_price_skew,
     };

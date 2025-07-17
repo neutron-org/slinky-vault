@@ -54,7 +54,7 @@ fn setup_test_config() -> Config {
         pause_block: 0,
         paused: false,
         oracle_contract: Addr::unchecked("oracle"),
-        skew: false,
+        skew: 0i32,
         imbalance: 0,
         oracle_price_skew: 0i32,
     }
@@ -522,7 +522,7 @@ fn test_update_config_skew() {
         fee_tier_config: None,
         paused: None,
         imbalance: None,
-        skew: Some(true),
+        skew: Some(100i32),
         oracle_contract: None,
         oracle_price_skew: None,
     };
@@ -543,7 +543,7 @@ fn test_update_config_skew() {
 
     // Verify config was updated
     let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
-    assert!(updated_config.skew);
+    assert_eq!(updated_config.skew, 100i32);
 }
 #[test]
 fn test_update_config_oracle_price_skew() {
@@ -620,7 +620,7 @@ fn test_update_config_all_fields() {
         }),
         paused: Some(true),
         imbalance: Some(50),
-        skew: Some(true),
+        skew: Some(100i32),
         oracle_contract: None,
         oracle_price_skew: None,
     };
