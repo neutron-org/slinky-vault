@@ -290,11 +290,11 @@ pub fn calculate_dynamic_spread_adjustment(
     let (tick_adjustment, fee_tier_adjustment) = if imbalance_f64 > 0.0 {
         // Token0 dominates, token1 is undersupplied
         // Move tick index down to make token0 more expensive
-        (-adjustment, adjustment)
+        (adjustment, adjustment)
     } else if imbalance_f64 < 0.0 {
         // Token1 dominates, token0 is undersupplied
-        // Move tick index up to to make token1 more expensive \
-        (adjustment, adjustment)
+        // Move tick index up to to make token1 more expensive
+        (-adjustment, adjustment)
     } else {
         // Perfectly balanced
         (0, 0)
