@@ -66,6 +66,8 @@ fn setup_test_config(env: Env) -> Config {
         skew: 0i32,
         imbalance: 50u32,
         oracle_price_skew: 0i32,
+        dynamic_spread_factor: 0i32,
+        dynamic_spread_cap: 0i32,
     }
 }
 
