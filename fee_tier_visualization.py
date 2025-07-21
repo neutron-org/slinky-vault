@@ -508,28 +508,44 @@ def create_dynamic_tick_visualization():
             spread_patch.set_facecolor('yellow')  # No significant movement
             spread_patch.set_alpha(0.2)
         
-        # Add single fee tier visualization (removed multiple orange bars)
+        # Calculate correct fee tier: half the spread + half the movement of expensive side
         if not hasattr(update, 'fee_display'):
-            # Create a single fee tier display
-            base_fee = 100  # Single base fee tier
-            update.base_fee = base_fee
-            
             # Single fee tier text display
-            update.fee_display = ax1.text(0.75, 0, f'Fee Tier: {base_fee}bp', ha='center', va='center', 
+            update.fee_display = ax1.text(0.75, 0, f'Fee Tier: 0bp', ha='center', va='center', 
                                         fontsize=12, fontweight='bold',
                                         bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgreen", alpha=0.8))
         
-        # Update single fee tier display
-        adjusted_fee = update.base_fee + fee_adj
-        adjusted_fee = max(0, adjusted_fee)  # Don't go negative
+        # Calculate fee tier correctly:
+        # Fee tier = half the spread + half the movement of the side becoming more expensive
+        half_spread = base_spread / 2.0
+        
+        if cap == 0:
+            # If spread cap is zero, fee tier is just half the spread
+            calculated_fee_tier = half_spread
+        elif abs(imbalance) < 1e-10:
+            # If perfectly balanced, fee tier is just half the spread
+            calculated_fee_tier = half_spread
+        else:
+            # If there's imbalance, add half the movement of the expensive side
+            # The expensive side is the undersupplied token
+            if imbalance > 0:
+                # Token1 is undersupplied (more expensive), movement = fee_adj
+                half_movement = fee_adj / 2.0
+            else:
+                # Token0 is undersupplied (more expensive), movement = fee_adj  
+                half_movement = fee_adj / 2.0
+            
+            calculated_fee_tier = half_spread + half_movement
+        
+        calculated_fee_tier = max(0, calculated_fee_tier)  # Don't go negative
         
         # Update fee display text and color
-        update.fee_display.set_text(f'Fee Tier: {adjusted_fee:.0f}bp')
+        update.fee_display.set_text(f'Fee Tier: {calculated_fee_tier:.0f}bp')
         
-        # Color based on fee change
-        if fee_adj > 0:
+        # Color based on whether fee tier increased from base
+        if calculated_fee_tier > half_spread:
             update.fee_display.set_bbox(dict(boxstyle="round,pad=0.5", facecolor="lightcoral", alpha=0.8))
-        elif fee_adj < 0:
+        elif calculated_fee_tier < half_spread:
             update.fee_display.set_bbox(dict(boxstyle="round,pad=0.5", facecolor="lightblue", alpha=0.8))
         else:
             update.fee_display.set_bbox(dict(boxstyle="round,pad=0.5", facecolor="lightgreen", alpha=0.8))
@@ -604,11 +620,16 @@ def create_dynamic_tick_visualization():
             if fee_adj > 0:
                 bound_movement = f"Upper bound moved up by {fee_adj:.0f}bp"
         
-        # Show spread information and centering
+        # Show spread information and fee tier calculation
         spread_info = f"Spread: {effective_upper - effective_lower:.0f}bp (base: {base_spread:.0f}bp)"
         center_info = f"Center: {original_center:.0f}bp"
+        fee_tier_info = f"Fee Tier: {calculated_fee_tier:.0f}bp = {half_spread:.0f}bp (½ spread)"
         
-        info_text.set_text(f'Curve Type: {curve_type}\nDirection: {direction}\nTick Position: {tick_position:+.0f}bp\n{center_info}\nFee Adj: {fee_adj:+.0f}bp\nBound Movement: {bound_movement}\n{spread_info}')
+        if abs(imbalance) > 1e-10 and cap > 0:
+            half_movement = fee_adj / 2.0
+            fee_tier_info += f" + {half_movement:.0f}bp (½ movement)"
+        
+        info_text.set_text(f'Curve Type: {curve_type}\nDirection: {direction}\nTick Position: {tick_position:+.0f}bp\n{center_info}\nFee Adj: {fee_adj:+.0f}bp\n{fee_tier_info}\nBound Movement: {bound_movement}\n{spread_info}')
         
         # Redraw
         fig.canvas.draw_idle()
