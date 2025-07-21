@@ -77,6 +77,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
                 to_vec(&redemption_rate).map_err(|_| ContractError::SerializationError)?;
             Ok(Binary::from(serialized_redemption_rate))
         }
+        QueryMsg::GetLstAssetDenom {} => {
+            let lst_asset_denom = CONFIG.load(deps.storage)?.d_asset_denom;
+            let serialized_lst_asset_denom =
+                to_vec(&lst_asset_denom).map_err(|_| ContractError::SerializationError)?;
+            Ok(Binary::from(serialized_lst_asset_denom))
+        }
     }
 }
 
