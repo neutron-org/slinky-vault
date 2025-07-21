@@ -306,7 +306,7 @@ def create_dynamic_tick_visualization():
     initial_factor = 0
     initial_cap = 100
     initial_imbalance = 0.5
-    initial_base_spread = 100  # Reduced from 200 for better low-value resolution
+    initial_base_spread = 100
 
     # Calculate initial adjustments
     tick_adj, fee_adj = calculate_dynamic_spread_adjustment(initial_factor, initial_cap, initial_imbalance)
@@ -325,15 +325,15 @@ def create_dynamic_tick_visualization():
     ax1.grid(True, alpha=0.3)
     ax1.axhline(y=0, color='black', linewidth=2, label='Center (0)')
     
-    # Initialize plot elements - FIXED: bounds should be static based on base spread only
+    # Initialize plot elements
     upper_bound_line = ax1.axhline(y=initial_base_spread/2, color='red', linewidth=3, alpha=0.7, label='Upper Bound (Static)')
     lower_bound_line = ax1.axhline(y=-initial_base_spread/2, color='red', linewidth=3, alpha=0.7, label='Lower Bound (Static)')
-    tick_index_line = ax1.axhline(y=tick_adj, color='blue', linewidth=2, alpha=0.6, label='Current Tick Index')  # Made less bold
+    tick_index_line = ax1.axhline(y=tick_adj, color='blue', linewidth=2, alpha=0.6, label='Current Tick Index')
     
     # Add markers for better visibility
     upper_marker = ax1.plot(0, initial_base_spread/2, 'ro', markersize=10)[0]
     lower_marker = ax1.plot(0, -initial_base_spread/2, 'ro', markersize=10)[0]
-    tick_marker = ax1.plot(0, tick_adj, 'bo', markersize=10, alpha=0.7)[0]  # Made less bold
+    tick_marker = ax1.plot(0, tick_adj, 'bo', markersize=10, alpha=0.7)[0]
     
     # Add text annotations
     upper_text = ax1.text(0.5, initial_base_spread/2 + 20, f'Upper: +{initial_base_spread/2:.0f}', 
@@ -364,7 +364,7 @@ def create_dynamic_tick_visualization():
     # Initialize curve plots
     imbalance_range = np.linspace(-1, 1, 100)
     
-    # Calculate curves for comparison - keep only linear as reference
+    # Calculate curves for comparison
     linear_curve = []
     linear_fee_curve = []
     current_curve = []
@@ -403,7 +403,7 @@ def create_dynamic_tick_visualization():
                              valinit=initial_imbalance, valfmt='%.2f')
     slider_imbalance.label.set_fontsize(10)
     
-    # Dynamic spread factor slider - Extended range for more extreme curve options
+    # Dynamic spread factor slider
     ax_factor = plt.axes([0.15, 0.25 - slider_spacing, 0.65, slider_height])
     slider_factor = Slider(ax_factor, 'Spread Factor', -1000, 1000, 
                           valinit=initial_factor, valfmt='%.0f')
@@ -415,13 +415,13 @@ def create_dynamic_tick_visualization():
                        valinit=initial_cap, valfmt='%.0f')
     slider_cap.label.set_fontsize(10)
     
-    # Base spread slider - Start from 0 for better low-value resolution
+    # Base spread slider
     ax_base_spread = plt.axes([0.15, 0.25 - 3*slider_spacing, 0.65, slider_height])
     slider_base_spread = Slider(ax_base_spread, 'Base Spread', 0, 500, 
                                valinit=initial_base_spread, valfmt='%.0f')
     slider_base_spread.label.set_fontsize(10)
     
-    # Add info text - moved to bottom right to avoid blocking other elements
+    # Add info text
     info_text = ax1.text(0.98, 0.02, 
                         f'Curve Type: Linear\nTick Adj: {tick_adj:+.0f}\nFee Adj: {fee_adj:+.0f}', 
                         transform=ax1.transAxes, fontsize=10, verticalalignment='bottom', horizontalalignment='right',
@@ -441,7 +441,7 @@ def create_dynamic_tick_visualization():
         base_upper = base_spread / 2
         base_lower = -base_spread / 2
         
-        # FIXED: Bounds can move by the full fee adjustment amount based on imbalance direction
+        # Bounds can move by the full fee adjustment amount based on imbalance direction
         if imbalance > 0:
             # Token0 dominates → Token1 is undersupplied
             # Move lower bound down by the fee adjustment amount
@@ -459,8 +459,8 @@ def create_dynamic_tick_visualization():
             effective_upper = base_upper
             effective_lower = base_lower
         
-        # FIXED: Tick index should move at half the speed of the bounds movement
-        # Start from the center of the ORIGINAL spread
+        # Tick index should move at half the speed of the bounds movement
+        # Start from the center of the original spread
         original_center = (base_upper + base_lower) / 2  # This is always 0 for symmetric spreads
         
         # Calculate tick position: move at half the speed of bounds movement
@@ -474,7 +474,7 @@ def create_dynamic_tick_visualization():
             # Balanced - tick stays at center
             tick_position = original_center
         
-        # Ensure tick index is ALWAYS between the effective bounds with proper margins
+        # Keep tick index between the effective bounds with proper margins
         # Use smaller margins for very small spreads to maintain visibility
         spread_size = effective_upper - effective_lower
         if spread_size > 0:
@@ -508,14 +508,14 @@ def create_dynamic_tick_visualization():
             spread_patch.set_facecolor('yellow')  # No significant movement
             spread_patch.set_alpha(0.2)
         
-        # Calculate correct fee tier: half the spread + half the movement of expensive side
+        # Calculate fee tier: half the spread + half the movement of expensive side
         if not hasattr(update, 'fee_display'):
             # Single fee tier text display
             update.fee_display = ax1.text(0.75, 0, f'Fee Tier: 0bp', ha='center', va='center', 
                                         fontsize=12, fontweight='bold',
                                         bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgreen", alpha=0.8))
         
-        # Calculate fee tier correctly:
+        # Calculate fee tier:
         # Fee tier = half the spread + half the movement of the side becoming more expensive
         half_spread = base_spread / 2.0
         
@@ -537,7 +537,7 @@ def create_dynamic_tick_visualization():
             
             calculated_fee_tier = half_spread + half_movement
         
-        calculated_fee_tier = max(0, calculated_fee_tier)  # Don't go negative
+        calculated_fee_tier = max(0, calculated_fee_tier)  # Prevent negative values
         
         # Update fee display text and color
         update.fee_display.set_text(f'Fee Tier: {calculated_fee_tier:.0f}bp')
@@ -570,7 +570,7 @@ def create_dynamic_tick_visualization():
         tick_text.set_position((-0.5, tick_position + 20))
         tick_text.set_text(f'Tick: {tick_position:+.0f}')
         
-        # Remove the effective bounds lines (no longer needed)
+        # Remove the effective bounds lines
         if hasattr(update, 'effective_upper_line'):
             update.effective_upper_line.set_visible(False)
             update.effective_lower_line.set_visible(False)
@@ -583,7 +583,7 @@ def create_dynamic_tick_visualization():
             current_curve.append(tick_current)
             current_fee_curve.append(fee_current)
         
-        # Update the current curve (we'll use the exponential line to show current settings)
+        # Update the current curve
         line_current.set_ydata(current_curve)
         line_current.set_label(f'Current Tick (Factor={factor})')
         
@@ -591,7 +591,7 @@ def create_dynamic_tick_visualization():
         line_current_fee.set_ydata(current_fee_curve)
         line_current_fee.set_label(f'Current Fee (Factor={factor})')
         
-        # IMPORTANT: Update the legend to reflect new labels
+        # Update the legend to reflect new labels
         ax2.legend()
         
         # Update current point
