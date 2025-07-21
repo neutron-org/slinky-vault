@@ -72,13 +72,79 @@ pub struct Config {
     pub paused: bool,
     /// the oracle contract address. This contract will be used to get the price of the tokens.
     pub oracle_contract: Addr,
+    /// whether to skew the AMM Deposits. If >0 , the AMM Deposit index will be skewed
+    /// making the over-supplied asset cheeper AND the under-supplied asset more expensive.
+    pub skew: i32,
+    /// the imbalance Factor indicated the rebalancing aggresiveness.
+    pub imbalance: u32,
+    /// General flat skew to add to the final deposit index of the vault
+    pub oracle_price_skew: i32,
+    /// the dynamic spread factor defines how quickly the undersupplied asset becomes more expensive
+    pub dynamic_spread_factor: i32,
+    /// the dynamic spread cap defines the maximum amount the undersupplied asset can be marked up in basis points.
+    pub dynamic_spread_cap: i32,
+}
+
+pub const CONFIG: Item<Config> = Item::new("data");
+
+/// Old config structure for migration compatibility
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OldConfig {
+    /// token and denom information
+    pub pair_data: PairData,
+    /// the denom of the contract's LP token
+    pub lp_denom: String,
+    /// total number of LP shares in existance
+    pub total_shares: Uint128,
+    /// list of addresses that can update the config and run restricted functions like dex_withdrawal and dex_deposit.
+    pub whitelist: Vec<Addr>,
+    /// maximum amount of dollar value that can be deposited into the contract
+    pub deposit_cap: Uint128,
+    /// location and weights of Deposits to be created
+    pub fee_tier_config: FeeTierConfig,
+    /// number of blocks until the contract is deemed stale.
+    /// Once stale, the contract will be paused for 1 block before being allowed to execute again.
+    pub timestamp_stale: u64,
+    /// last block that action was executed to prevent staleness.
+    pub last_executed: u64,
+    /// The block when the contract was last paused due to stalenesss.
+    pub pause_block: u64,
+    /// whether the contract is paused. Paused contract cannot perform deposit functionalities.
+    pub paused: bool,
+    /// the oracle contract address. This contract will be used to get the price of the tokens.
+    pub oracle_contract: Addr,
     /// whether to skew the AMM Deposits. If true, the AMM Deposit index will be skewed
     /// makING the over-supplied asset cheeper AND the under-supplied asset more expensive.
-    pub skew: i32,
+    pub skew: bool,
     /// the imbalance Factor indicated the rebalancing aggresiveness.
     pub imbalance: u32,
     /// General skew to add to the final deposit index of the vault
     pub oracle_price_skew: i32,
 }
 
-pub const CONFIG: Item<Config> = Item::new("data");
+impl From<OldConfig> for Config {
+    fn from(old: OldConfig) -> Self {
+        Config {
+            pair_data: old.pair_data,
+            lp_denom: old.lp_denom,
+            total_shares: old.total_shares,
+            whitelist: old.whitelist,
+            deposit_cap: old.deposit_cap,
+            fee_tier_config: old.fee_tier_config,
+            timestamp_stale: old.timestamp_stale,
+            last_executed: old.last_executed,
+            pause_block: old.pause_block,
+            paused: old.paused,
+            oracle_contract: old.oracle_contract,
+            skew: 0, // revert skew to zero if old config skew is activated
+            imbalance: old.imbalance,
+            oracle_price_skew: old.oracle_price_skew,
+            // Set default values for new fields
+            dynamic_spread_factor: 0, // linear factor
+            dynamic_spread_cap: 0,    // no cap
+        }
+    }
+}
+
+pub const OLD_CONFIG: Item<OldConfig> = Item::new("data");
