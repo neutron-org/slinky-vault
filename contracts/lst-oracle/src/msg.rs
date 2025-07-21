@@ -12,7 +12,7 @@ pub enum QueryMsg {
         token_b: TokenData,
     },
     GetRedemptionRate {},
-    GetLstAssetDenom {}
+    GetLstAssetDenom {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
