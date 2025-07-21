@@ -240,10 +240,10 @@ pub fn get_deposit_data(
 /// Linear case: factor = 0:
 /// f(x) = x * c
 ///
-/// Exponential case: factor < 0 (slow then fast):
+/// Logarithmic case: factor < 0 (slow then fast):
 /// g(x) = (1 - (1-x)^(1+q)) * c  where q = |factor|/100
 ///
-/// Logarithmic case: factor > 0 (fast then slow):
+/// exponential case: factor > 0 (fast then slow):
 /// h(x) = (1 - e^(-x*q)) / (1 - e^(-q)) * c  where q = factor/100
 pub fn calculate_dynamic_spread_adjustment(
     dynamic_spread_factor: i32,
@@ -267,13 +267,13 @@ pub fn calculate_dynamic_spread_adjustment(
         exponential_curve * dynamic_spread_cap as f64
     } else {
         // Fast at first, then slower (logarithmic curve that starts above linear)
-        let n = dynamic_spread_factor as f64 / 100.0; // normalization
+        let q = dynamic_spread_factor as f64 / 100.0; // normalization
         let x = imbalance_f64.abs();
-        let log_curve = if n.abs() < f64::EPSILON {
-            // Handle edge case where n approaches 0 (should be linear)
+        let log_curve = if q.abs() < f64::EPSILON {
+            // Handle edge case where q approaches 0 (should be linear)
             x
         } else {
-            (1.0 - (-x * n).exp()) / (1.0 - (-n).exp())
+            (1.0 - (-x * q).exp()) / (1.0 - (-q).exp())
         };
         log_curve * dynamic_spread_cap as f64
     };
@@ -289,11 +289,11 @@ pub fn calculate_dynamic_spread_adjustment(
     // Determine which asset is undersupplied and adjust accordingly
     let (tick_adjustment, fee_tier_adjustment) = if imbalance_f64 > 0.0 {
         // Token0 dominates, token1 is undersupplied
-        // Move tick index down to make token0 more expensive
+        // Move tick index up to make token0 more expensive
         (adjustment, adjustment)
     } else if imbalance_f64 < 0.0 {
         // Token1 dominates, token0 is undersupplied
-        // Move tick index up to to make token1 more expensive
+        // Move tick index down to to make token1 more expensive
         (-adjustment, adjustment)
     } else {
         // Perfectly balanced
