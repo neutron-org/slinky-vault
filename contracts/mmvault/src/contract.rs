@@ -3,7 +3,8 @@ use crate::execute::*;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WithdrawPayload};
 use crate::query::*;
 use crate::state::{
-    Config, PairData, CONFIG, OLD_CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_ID, WITHDRAW_REPLY_ID,
+    Config, PairData, CONFIG, CREATE_TOKEN_REPLY_ID, DEX_DEPOSIT_REPLY_ID, OLD_CONFIG,
+    WITHDRAW_REPLY_ID,
 };
 use crate::utils::*;
 use cosmwasm_std::{
@@ -40,7 +41,7 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     if let Some(new_config) = msg.config {
         config = new_config;
     }
-    
+
     // Save the config in the new format. this could be an updated config.
     CONFIG.save(deps.storage, &config)?;
 

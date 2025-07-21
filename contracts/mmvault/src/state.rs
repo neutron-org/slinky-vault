@@ -142,7 +142,7 @@ impl From<OldConfig> for Config {
             oracle_price_skew: old.oracle_price_skew,
             // Set default values for new fields
             dynamic_spread_factor: 0, // linear factor
-            dynamic_spread_cap: 0, // no cap
+            dynamic_spread_cap: 0,    // no cap
         }
     }
 }
