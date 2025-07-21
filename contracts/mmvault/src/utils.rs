@@ -2,7 +2,7 @@ use std::vec;
 
 use crate::error::{ContractError, ContractResult};
 use crate::msg::{CombinedPriceResponse, DepositResult};
-use crate::state::{Config, PairData, TokenData, CONFIG, SHARES_MULTIPLIER};
+use crate::state::{Config, FeeTier, PairData, TokenData, CONFIG, SHARES_MULTIPLIER};
 use cosmwasm_std::{
     BalanceResponse, BankMsg, BankQuery, Binary, Coin, CosmosMsg, Deps, Env, MessageInfo,
     QueryRequest, ReplyOn, Response, SubMsg, SubMsgResponse, Uint128,
@@ -134,12 +134,14 @@ pub fn get_deposit_data(
     total_available_0: Uint128,
     total_available_1: Uint128,
     tick_index: i64,
-    fee: u64,
+    fee_tiers: Vec<FeeTier>,
     prices: &CombinedPriceResponse,
     base_deposit_percentage: u64,
     skew: i32,
     config_imbalance: u32,
     config_oracle_price_skew: i32,
+    config_dynamic_spread_factor: i32,
+    config_dynamic_spread_cap: i32,
 ) -> Result<DepositResult, ContractError> {
     let computed_amount_0 = total_available_0.multiply_ratio(base_deposit_percentage, 100u128);
     let computed_amount_1 = total_available_1.multiply_ratio(base_deposit_percentage, 100u128);
@@ -206,51 +208,133 @@ pub fn get_deposit_data(
         .map_err(|_| ContractError::DecimalConversionError)?
         .checked_mul(prices.token_1_price)?;
 
-    // If skew is enabled, calculate the adjusted tick index based on the value imbalance
-    let adjusted_tick_index = if skew != 0 {
-        calculate_adjusted_tick_index(tick_index, skew, total_value_token_0, total_value_token_1)?
+    // If skew is enabled or dynamic spread cap is set, calculate the adjusted tick index based on the value imbalance
+    let (adjusted_tick_index, modified_fee_tiers) = if skew != 0 || config_dynamic_spread_cap > 0 {
+        calculate_adjusted_tick_index_and_fee_tiers(
+            tick_index,
+            fee_tiers.clone(),
+            skew,
+            config_dynamic_spread_factor,
+            config_dynamic_spread_cap,
+            total_value_token_0,
+            total_value_token_1,
+        )?
     } else {
-        tick_index
+        (tick_index, fee_tiers)
     };
 
     let result = DepositResult {
         amount0: final_amount_0,
         amount1: final_amount_1,
         tick_index: adjusted_tick_index + config_oracle_price_skew as i64,
-        fee,
+        fees: modified_fee_tiers,
     };
     Ok(result)
 }
-
-/// Calculates an adjusted tick index based on token value imbalance
+/// Calculates dynamic spread adjustment based on token value imbalance and spread factor
 ///
+/// Returns (tick_adjustment, modified_fee_tiers) based on:
+/// - dynamic_spread_factor: negative = slow then fast (exponential), positive = fast then slow (logarithmic), zero = linear
+/// - dynamic_spread_cap: maximum distance allowed to move
+/// - imbalance_f64: token value imbalance ratio (-1.0 to 1.0)
+/// - fee_tiers: input fee tiers to be modified
+///
+/// Linear case: factor = 0:
+/// f(x) = x * c
+///
+/// Logarithmic case: factor < 0 (slow then fast):
+/// g(x) = (1 - (1-x)^(1+q)) * c  where q = |factor|/100
+///
+/// exponential case: factor > 0 (fast then slow):
+/// h(x) = (1 - e^(-x*q)) / (1 - e^(-q)) * c  where q = factor/100
+pub fn calculate_dynamic_spread_adjustment(
+    dynamic_spread_factor: i32,
+    dynamic_spread_cap: i32,
+    imbalance_f64: f64,
+    fee_tiers: Vec<FeeTier>,
+) -> (i64, Vec<FeeTier>) {
+    if dynamic_spread_cap == 0 || imbalance_f64.abs() < f64::EPSILON {
+        return (0, fee_tiers);
+    }
+
+    // Calculate the dynamic spread adjustment
+    let spread_adjustment = if dynamic_spread_factor == 0 {
+        // Linear movement: f(x) = x * cap
+        imbalance_f64.abs() * dynamic_spread_cap as f64
+    } else if dynamic_spread_factor < 0 {
+        // Slow at first, then faster (exponential curve that starts below linear)
+        let q = (-dynamic_spread_factor) as f64 / 100.0; // normalization factor
+        let x = imbalance_f64.abs();
+        let exponential_curve = x.powf(1.0 + q);
+        exponential_curve * dynamic_spread_cap as f64
+    } else {
+        // Fast at first, then slower (logarithmic curve that starts above linear)
+        let q = dynamic_spread_factor as f64 / 100.0; // normalization
+        let x = imbalance_f64.abs();
+        let log_curve = if q.abs() < f64::EPSILON {
+            // Handle edge case where q approaches 0 (should be linear)
+            x
+        } else {
+            (1.0 - (-x * q).exp()) / (1.0 - (-q).exp())
+        };
+        log_curve * dynamic_spread_cap as f64
+    };
+
+    // the fee adjustement contributes half of the movement,
+    // the tick index adjustement contributes the other hald.
+    // they are both equal so we divide by 2 here
+    let half_adjustment = spread_adjustment / 2.0;
+
+    // Calculate the adjustment once to ensure consistency between tick and fee adjustments
+    let adjustment = half_adjustment.round() as i64;
+
+    // Determine which asset is undersupplied and adjust accordingly
+    let (tick_adjustment, fee_tier_adjustment) = if imbalance_f64 > 0.0 {
+        // Token0 dominates, token1 is undersupplied
+        // Move tick index up to make token0 more expensive
+        (adjustment, adjustment)
+    } else if imbalance_f64 < 0.0 {
+        // Token1 dominates, token0 is undersupplied
+        // Move tick index down to to make token1 more expensive
+        (-adjustment, adjustment)
+    } else {
+        // Perfectly balanced
+        (0, 0)
+    };
+
+    // Modify all fee tiers by the same fee tier adjustment amount
+    let modified_fee_tiers: Vec<FeeTier> = fee_tiers
+        .into_iter()
+        .map(|mut tier| {
+            tier.fee = (tier.fee as i64 + fee_tier_adjustment).max(0) as u64;
+            tier
+        })
+        .collect();
+
+    (tick_adjustment, modified_fee_tiers)
+}
+
+/// Calculates an adjusted tick index and modified fee tiers based on token value imbalance
+/// Returns (adjusted_tick_index, modified_fee_tiers)
 /// If values are balanced, no adjustment is made
-/// If token0 value dominates tick index is linearly increased (up to fee-1)
-/// If token1 value dominates tick index is linearly decreased (up to fee-1)
-pub fn calculate_adjusted_tick_index(
+/// If token0 value dominates tick index is adjusted and fee tiers are widened
+/// If token1 value dominates tick index is adjusted and fee tiers are widened
+pub fn calculate_adjusted_tick_index_and_fee_tiers(
     base_tick_index: i64,
+    fee_tiers: Vec<FeeTier>,
     skew: i32,
+    dynamic_spread_factor: i32,
+    dynamic_spread_cap: i32,
     value_token_0: PrecDec,
     value_token_1: PrecDec,
-) -> Result<i64, ContractError> {
+) -> Result<(i64, Vec<FeeTier>), ContractError> {
     // If values are zero
     if value_token_0.is_zero() && value_token_1.is_zero() {
-        return Ok(base_tick_index); // No adjustment if both values are zero
+        return Ok((base_tick_index, fee_tiers)); // No adjustment if both values are zero
     }
 
     // Calculate the total value
     let total_value = value_token_0.checked_add(value_token_1)?;
-
-    // Handle edge cases
-    if value_token_0.is_zero() {
-        // Token1 completely dominates, move index down by the whole skew
-        return Ok(base_tick_index - skew as i64);
-    }
-
-    if value_token_1.is_zero() {
-        // Token0 completely dominates, move index up by the whole skew
-        return Ok(base_tick_index + skew as i64);
-    }
 
     // Calculate the imbalance ratio (-1.0 to 1.0)
     // -1.0 means token1 completely dominates
@@ -278,11 +362,22 @@ pub fn calculate_adjusted_tick_index(
             .map_err(|_| ContractError::ConversionError)?
     };
 
-    // Calculate the adjustment linearly based on the imbalance
-    let adjustment = (imbalance_f64 * skew as f64).round() as i64;
- 
+    // Calculate dynamic spread adjustment
+    let (dynamic_tick_adjustment, modified_fee_tiers) = calculate_dynamic_spread_adjustment(
+        dynamic_spread_factor,
+        dynamic_spread_cap,
+        imbalance_f64,
+        fee_tiers,
+    );
+
+    // Apply the base skew adjustment
+    let skew_adjustment = (imbalance_f64 * skew as f64).round() as i64;
+
+    // Combine adjustments - the final tick should incorporate both skew and dynamic spread
+    let final_tick_adjustment = skew_adjustment + dynamic_tick_adjustment;
+
     // Apply the adjustment to the base tick index
-    Ok(base_tick_index + adjustment)
+    Ok((base_tick_index + final_tick_adjustment, modified_fee_tiers))
 }
 
 /// Extract the amounts of token0 and token1 from the withdrawal response.
@@ -455,12 +550,14 @@ pub fn get_deposit_messages(
         token_0_balance,
         token_1_balance,
         tick_index,
-        config.fee_tier_config.fee_tiers[0].fee,
+        config.fee_tier_config.fee_tiers.clone(),
         prices,
         config.fee_tier_config.fee_tiers[0].percentage,
         config.skew,
         config.imbalance,
         config.oracle_price_skew,
+        config.dynamic_spread_factor,
+        config.dynamic_spread_cap,
     )?;
     // Only create base deposit message if amounts are greater than zero
     if deposit_data.amount0 > Uint128::zero() || deposit_data.amount1 > Uint128::zero() {
@@ -472,7 +569,7 @@ pub fn get_deposit_messages(
             amounts_a: vec![deposit_data.amount0.to_string()],
             amounts_b: vec![deposit_data.amount1.to_string()],
             tick_indexes_a_to_b: vec![deposit_data.tick_index],
-            fees: vec![deposit_data.fee],
+            fees: vec![deposit_data.fees[0].fee],
             options: vec![DepositOptions {
                 disable_autoswap: false,
                 fail_tx_on_bel: false,
@@ -492,16 +589,14 @@ pub fn get_deposit_messages(
         .unwrap_or(Uint128::zero());
 
     // If no remaining tokens or no additional fee tiers, return early
-    if (remaining_amount0.is_zero() && remaining_amount1.is_zero())
-        || config.fee_tier_config.fee_tiers.len() <= 1
+    if (remaining_amount0.is_zero() && remaining_amount1.is_zero()) || deposit_data.fees.len() <= 1
     {
         return Ok(messages);
     }
 
     // Calculate sum of remaining percentages
-    let remaining_percentages: u64 = config
-        .fee_tier_config
-        .fee_tiers
+    let remaining_percentages: u64 = deposit_data
+        .fees
         .iter()
         .skip(1)
         .map(|tier| tier.percentage)
@@ -512,12 +607,7 @@ pub fn get_deposit_messages(
     }
 
     // Process remaining fee tiers
-    let remaining_tiers = config
-        .fee_tier_config
-        .fee_tiers
-        .iter()
-        .skip(1)
-        .collect::<Vec<_>>();
+    let remaining_tiers = deposit_data.fees.iter().skip(1).collect::<Vec<_>>();
 
     // Calculate the total amount to distribute for each token
     let total_amount0_to_distribute = remaining_amount0;

@@ -112,6 +112,41 @@ make optimize
 make test
 ```
 
+### Fee Tier Visualization
+
+The project includes an interactive Python visualization tool to understand how the dynamic fee tier adjustment system works. This tool provides real-time visualization of tick index movements, spread adjustments, and fee tier changes based on imbalance ratios. An interactive version of these curves can be found on [Desmos](https://www.desmos.com/calculator/azvwibipjm)
+
+#### Prerequisites
+- Python 3.8 or higher
+- pip package manager
+
+#### Setup and Run
+```bash
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Run the interactive visualization
+python3 fee_tier_visualization.py
+```
+
+#### Features
+
+**Interactive Dashboard** (`create_dynamic_tick_visualization()`): 
+   - Real-time sliders to adjust imbalance ratio, spread factor, spread cap, and base spread
+   - Visual representation of tick index movement and spread bounds
+   - Live updates showing how fee tiers adjust based on market conditions
+
+#### Understanding the Visualization
+- **Blue tick line**: Shows current tick index position within the spread bounds
+- **Red bounds**: Upper and lower spread boundaries that move based on imbalance
+- **Yellow/colored spread area**: Active trading spread that adjusts dynamically
+- **Fee tier display**: Shows how base fees are modified by the adjustment algorithm
+
+The tool helps visualize how the vault responds to token imbalances by:
+- Moving tick indices and windening spread in order make the undersupplied token more expensive
+- Does this in aoccordance to the chosed curve parameters set bu the `spread factor` parameter
+
+
 ## License
 
 TBD -

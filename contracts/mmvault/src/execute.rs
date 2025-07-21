@@ -333,8 +333,8 @@ pub fn handle_withdrawal_reply(
                 .add_messages(messages)
                 .add_attribute("action", "withdrawal_reply_success")
                 .add_attribute("next_action", "create_new_deposit")
-                .add_attribute("withdrawn_token_0", withdraw_amount_0.to_string())
-                .add_attribute("withdrawn_token_1", withdraw_amount_1.to_string())
+                .add_attribute("withdraw_amount_0", withdraw_amount_0.to_string())
+                .add_attribute("withdraw_amount_1", withdraw_amount_1.to_string())
                 .add_attribute("shares_burned", burn_amount.to_string())
                 .add_attribute("total_shares", config.total_shares.to_string()))
         }
@@ -511,6 +511,37 @@ pub fn update_config(
     if let Some(oracle_price_skew) = update.oracle_price_skew {
         config.oracle_price_skew = oracle_price_skew;
         attrs.push(attr("oracle_price_skew", oracle_price_skew.to_string()));
+    }
+
+    if let Some(dynamic_spread_factor) = update.dynamic_spread_factor {
+        // Validate dynamic_spread_factor bounds to prevent overflow/underflow
+        if dynamic_spread_factor < -10000 || dynamic_spread_factor > 10000 {
+            return Err(ContractError::InvalidConfig {
+                reason: format!(
+                    "dynamic_spread_factor must be between -10000 and 10000, got {}",
+                    dynamic_spread_factor
+                ),
+            });
+        }
+        config.dynamic_spread_factor = dynamic_spread_factor;
+        attrs.push(attr(
+            "dynamic_spread_factor",
+            dynamic_spread_factor.to_string(),
+        ));
+    }
+
+    if let Some(dynamic_spread_cap) = update.dynamic_spread_cap {
+        // Validate dynamic_spread_cap bounds to prevent overflow and ensure it's reasonable
+        if dynamic_spread_cap < 0 || dynamic_spread_cap > 100000 {
+            return Err(ContractError::InvalidConfig {
+                reason: format!(
+                    "dynamic_spread_cap must be between 0 and 100000, got {}",
+                    dynamic_spread_cap
+                ),
+            });
+        }
+        config.dynamic_spread_cap = dynamic_spread_cap;
+        attrs.push(attr("dynamic_spread_cap", dynamic_spread_cap.to_string()));
     }
 
     // Save updated config
