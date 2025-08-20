@@ -234,7 +234,7 @@ pub fn get_deposit_data(
 /// Calculates dynamic spread adjustment based on token value imbalance and spread factor
 ///
 /// Returns (tick_adjustment, modified_fee_tiers) based on:
-/// - dynamic_spread_factor: negative = slow then fast (exponential), positive = fast then slow (logarithmic), zero = linear
+/// - dynamic_spread_factor: negative = slow then fast (power function), positive = fast then slow (exponential decay), zero = linear
 /// - dynamic_spread_cap: maximum distance allowed to move
 /// - imbalance_f64: token value imbalance ratio (-1.0 to 1.0)
 /// - fee_tiers: input fee tiers to be modified
@@ -242,10 +242,10 @@ pub fn get_deposit_data(
 /// Linear case: factor = 0:
 /// f(x) = x * c
 ///
-/// Logarithmic case: factor < 0 (slow then fast):
-/// g(x) = (1 - (1-x)^(1+q)) * c  where q = |factor|/100
+/// Power function case: factor < 0 (slow then fast):
+/// g(x) = x^(1+q) * c  where q = |factor|/100
 ///
-/// exponential case: factor > 0 (fast then slow):
+/// Exponential decay case: factor > 0 (fast then slow):
 /// h(x) = (1 - e^(-x*q)) / (1 - e^(-q)) * c  where q = factor/100
 pub fn calculate_dynamic_spread_adjustment(
     dynamic_spread_factor: i32,

@@ -582,7 +582,7 @@ mod tests {
 // Then move deposit index by the adjustement amount (-5)
 //             15     15
 // --------|-------|-------|------
-//         c       n      c+30
+//         c      n+5      c+30
 // n and c remain identical, imbalanced index moved by 10
 #[test_case(100, 0, 0.1, vec![FeeTier { fee: 10, percentage: 100 }] => (5, vec![FeeTier { fee: 15, percentage: 100 }]); "linear movement positive imbalance -1")]
 #[test_case(100, 0, 0.2, vec![FeeTier { fee: 10, percentage: 100 }] => (10, vec![FeeTier { fee: 20, percentage: 100 }]); "linear movement positive imbalance -2")]

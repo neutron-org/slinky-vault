@@ -411,7 +411,7 @@ def create_dynamic_tick_visualization():
     
     # Dynamic spread cap slider
     ax_cap = plt.axes([0.15, 0.25 - 2*slider_spacing, 0.65, slider_height])
-    slider_cap = Slider(ax_cap, 'Spread Cap', 0, 300, 
+    slider_cap = Slider(ax_cap, 'Spread Cap', 0, 1000, 
                        valinit=initial_cap, valfmt='%.0f')
     slider_cap.label.set_fontsize(10)
     
@@ -466,10 +466,10 @@ def create_dynamic_tick_visualization():
         # Calculate tick position: move at half the speed of bounds movement
         if imbalance > 0:
             # Lower bound moved down by fee_adj, so tick moves down by fee_adj/2
-            tick_position = original_center - (fee_adj / 2.0)
+            tick_position = original_center - (fee_adj)
         elif imbalance < 0:
             # Upper bound moved up by fee_adj, so tick moves up by fee_adj/2  
-            tick_position = original_center + (fee_adj / 2.0)
+            tick_position = original_center + (fee_adj)
         else:
             # Balanced - tick stays at center
             tick_position = original_center
@@ -517,7 +517,7 @@ def create_dynamic_tick_visualization():
         
         # Calculate fee tier:
         # Fee tier = half the spread + half the movement of the side becoming more expensive
-        half_spread = base_spread / 2.0
+        half_spread = base_spread
         
         if cap == 0:
             # If spread cap is zero, fee tier is just half the spread
