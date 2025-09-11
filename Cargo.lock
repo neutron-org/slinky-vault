@@ -338,6 +338,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cron-runner"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-storage-plus",
+ "cw2",
+ "prost 0.12.6",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.62",
+]
+
+[[package]]
 name = "crossbeam-deque"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -512,6 +528,24 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-ownable",
+ "cw-storage-plus",
+ "cw2",
+ "neutron-std",
+ "prost 0.12.6",
+ "prost-types",
+ "schemars",
+ "serde",
+ "serde_json",
+ "test-case",
+ "thiserror 1.0.62",
+]
+
+[[package]]
+name = "dasset-updator"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
  "cw-storage-plus",
  "cw2",
  "neutron-std",
