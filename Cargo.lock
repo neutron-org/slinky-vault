@@ -525,6 +525,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "dasset-updator"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw2",
+ "neutron-std",
+ "prost 0.12.6",
+ "prost-types",
+ "schemars",
+ "serde",
+ "serde_json",
+ "test-case",
+ "thiserror 1.0.62",
+]
+
+[[package]]
 name = "der"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -810,6 +828,24 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-ownable",
+ "cw-storage-plus",
+ "cw2",
+ "neutron-std",
+ "prost 0.12.6",
+ "prost-types",
+ "schemars",
+ "serde",
+ "serde_json",
+ "test-case",
+ "thiserror 1.0.62",
+]
+
+[[package]]
+name = "maxbtc-oracle"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
  "cw-storage-plus",
  "cw2",
  "neutron-std",
