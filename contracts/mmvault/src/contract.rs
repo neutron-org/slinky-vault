@@ -150,7 +150,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Deposit { .. } => deposit(deps, _env, info),
+        ExecuteMsg::Deposit { beneficiary } => deposit(deps, _env, info, beneficiary),
         ExecuteMsg::Withdraw { amount } => {
             // Prevent other tokens from being sent with the Withdraw message
             if info.funds.len() != 1 {

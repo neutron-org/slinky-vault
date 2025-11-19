@@ -12,7 +12,12 @@ use neutron_std::types::osmosis::tokenfactory::v1beta1::{MsgCreateDenom, MsgMint
 use prost::Message;
 
 /// Deposit funds into the contract.
-pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+pub fn deposit(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    beneficiary: Option<String>,
+) -> Result<Response, ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
     // Load the contract configuration
     let mut config = CONFIG.load(deps.storage)?;
@@ -79,6 +84,14 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
     config.total_shares += amount_to_mint;
     CONFIG.save(deps.storage, &config)?;
 
+    // Determine the recipient address - use beneficiary if provided, otherwise use sender
+    let recipient = if let Some(beneficiary_addr) = beneficiary {
+        // Validate and normalize the beneficiary address
+        deps.api.addr_validate(&beneficiary_addr)?.to_string()
+    } else {
+        info.sender.to_string()
+    };
+
     // Mint LP tokens
     let mint_msg = MsgMint {
         sender: env.contract.address.to_string(),
@@ -89,7 +102,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
             }
             .into(),
         ),
-        mint_to_address: info.sender.to_string(),
+        mint_to_address: recipient.clone(),
     };
     messages.push(mint_msg.into());
 
@@ -100,6 +113,7 @@ pub fn deposit(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, C
         .add_attribute("token_0_deposited", token0_deposited.to_string())
         .add_attribute("token_1_deposited", token1_deposited.to_string())
         .add_attribute("from", info.sender.to_string())
+        .add_attribute("beneficiary", recipient)
         .add_attribute("minted_amount", amount_to_mint.to_string())
         .add_attribute("total_shares", config.total_shares.to_string()))
 }
