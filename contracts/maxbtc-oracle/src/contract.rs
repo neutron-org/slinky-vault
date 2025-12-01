@@ -40,6 +40,7 @@ pub fn instantiate(
         maxbtc_denom: msg.maxbtc_denom,
         lst_denom: msg.lst_denom,
         lst_redemption_rate: msg.lst_redemption_rate,
+        maxbtc_mint_fee: msg.maxbtc_mint_fee,
     };
 
     CONFIG.save(deps.storage, config)?;
@@ -51,6 +52,7 @@ pub fn instantiate(
             attr("maxbtc_denom", format!("{:?}", config.maxbtc_denom)),
             attr("lst_denom", format!("{:?}", config.lst_denom)),
             attr("lst_redemption_rate", format!("{:?}", config.lst_redemption_rate)),
+            attr("maxbtc_mint_fee", format!("{:?}", config.maxbtc_mint_fee)),
         ]))
 }
 
@@ -94,6 +96,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
             let serialized_rate =
                 to_vec(&maxbtc_redemption_rate).map_err(|_| ContractError::SerializationError)?;
             Ok(Binary::from(serialized_rate))
+        }
+        QueryMsg::GetMaxBtcMintFee {} => {
+            let maxbtc_mint_fee = CONFIG.load(deps.storage)?.maxbtc_mint_fee;
+            let serialized_fee =
+                to_vec(&maxbtc_mint_fee).map_err(|_| ContractError::SerializationError)?;
+            Ok(Binary::from(serialized_fee))
         }
         QueryMsg::GetLstRedemptionRate {} => {
             let config = CONFIG.load(deps.storage)?;
@@ -178,6 +186,9 @@ fn execute_update_config(
     if let Some(lst_redemption_rate) = new_config.lst_redemption_rate {
         config.lst_redemption_rate = lst_redemption_rate;
     }
+    if let Some(maxbtc_mint_fee) = new_config.maxbtc_mint_fee {
+        config.maxbtc_mint_fee = maxbtc_mint_fee;
+    }
 
     CONFIG.save(deps.storage, &config)?;
 
@@ -189,6 +200,7 @@ fn execute_update_config(
             attr("maxbtc_denom", format!("{:?}", config.maxbtc_denom)),
             attr("lst_denom", format!("{:?}", config.lst_denom)),
             attr("lst_redemption_rate", format!("{:?}", config.lst_redemption_rate)),
+            attr("maxbtc_mint_fee", format!("{:?}", config.maxbtc_mint_fee)),
         ]))
 }
 
