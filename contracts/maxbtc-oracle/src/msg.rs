@@ -15,6 +15,7 @@ pub enum QueryMsg {
     GetLstRedemptionRate {},
     GetMaxBtcDenom {},
     GetLstDenom {},
+    GetMaxBtcMintFee {},
     GetOwners {},
     IsOwner { address: String },
 }
@@ -27,6 +28,7 @@ pub struct UpdateConfig {
     pub maxbtc_denom: Option<String>,
     pub lst_denom: Option<String>,
     pub lst_redemption_rate: Option<PrecDec>,
+    pub maxbtc_mint_fee: Option<i64>, // in basis points
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -47,4 +49,5 @@ pub struct InstantiateMsg {
     pub maxbtc_denom: String,
     pub lst_denom: String,
     pub lst_redemption_rate: PrecDec,
+    pub maxbtc_mint_fee: i64, // in basis points 
 }

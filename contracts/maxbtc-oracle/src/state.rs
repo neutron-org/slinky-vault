@@ -28,6 +28,7 @@ pub struct Config {
     pub maxbtc_denom: String,
     pub lst_denom: String,
     pub lst_redemption_rate: PrecDec,
+    pub maxbtc_mint_fee: i64, // in basis points
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");

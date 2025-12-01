@@ -245,6 +245,13 @@ pub fn get_prices(
         let maxbtc_redemption_rate = PrecDec::from_str(&maxbtc_exchange_rate.to_string())
             .map_err(|_| ContractError::PrecDecConversionError)?;
         token_0_price = token_0_price.checked_mul(maxbtc_redemption_rate)?;
+        
+        //   mint_fee = 25: (10000 - 25) / 10000 = 9975 / 10000 = 0.9975 (discount)
+        let adjustment_factor = PrecDec::from_ratio(
+            (10000i128 - config.maxbtc_mint_fee as i128) as u128, 
+            10000u128
+        );
+        token_0_price = token_0_price.checked_mul(adjustment_factor)?;
     } else if token_a.denom.eq(&config.lst_denom) {
         // token_a is LST, use the stored redemption rate
         token_0_price = token_0_price.checked_mul(config.lst_redemption_rate)?;
@@ -257,6 +264,12 @@ pub fn get_prices(
         let maxbtc_redemption_rate = PrecDec::from_str(&maxbtc_exchange_rate.to_string())
             .map_err(|_| ContractError::PrecDecConversionError)?;
         token_1_price = token_1_price.checked_mul(maxbtc_redemption_rate)?;
+
+        let adjustment_factor = PrecDec::from_ratio(
+            (10000i128 - config.maxbtc_mint_fee as i128) as u128, 
+            10000u128
+        );
+        token_1_price = token_1_price.checked_mul(adjustment_factor)?;
     } else if token_b.denom.eq(&config.lst_denom) {
         // token_b is LST, use the stored redemption rate
         token_1_price = token_1_price.checked_mul(config.lst_redemption_rate)?;
