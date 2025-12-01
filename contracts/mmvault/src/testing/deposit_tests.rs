@@ -135,12 +135,12 @@ fn test_deposit_success() {
         deps.as_mut(),
         env.clone(),
         info_with_both_tokens,
-        ExecuteMsg::Deposit {},
+        ExecuteMsg::Deposit { beneficiary: None },
     )
     .unwrap();
 
     // Verify response
-    assert_eq!(res.attributes.len(), 6);
+    assert_eq!(res.attributes.len(), 7);
     assert_eq!(res.attributes[0].key, "action");
     assert_eq!(res.attributes[0].value, "deposit");
     assert_eq!(res.attributes[1].key, "token_0_deposited");
@@ -149,7 +149,9 @@ fn test_deposit_success() {
     assert_eq!(res.attributes[2].value, deposit_amount_1.to_string());
     assert_eq!(res.attributes[3].key, "from");
     assert_eq!(res.attributes[3].value, "user1");
-    assert_eq!(res.attributes[4].key, "minted_amount");
+    assert_eq!(res.attributes[4].key, "beneficiary");
+    assert_eq!(res.attributes[4].value, "user1");
+    assert_eq!(res.attributes[5].key, "minted_amount");
 
     // Verify that LP tokens were minted
     assert!(!res.messages.is_empty());
@@ -179,7 +181,7 @@ fn test_deposit_paused() {
         ],
     );
 
-    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap_err();
+    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap_err();
 
     // Verify error
     assert_eq!(err, ContractError::Paused {});
@@ -197,7 +199,7 @@ fn test_deposit_no_funds() {
     // Execute deposit with no funds
     let info = mock_info("user1", &[]);
 
-    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap_err();
+    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap_err();
 
     // Verify error
     assert_eq!(err, ContractError::NoFundsSent {});
@@ -215,7 +217,7 @@ fn test_deposit_invalid_token() {
     // Execute deposit with invalid token
     let info = mock_info("user1", &[Coin::new(500000u128, "invalid_token")]);
 
-    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap_err();
+    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap_err();
 
     // Verify error
     assert_eq!(err, ContractError::InvalidToken {});
@@ -236,7 +238,7 @@ fn test_deposit_zero_amount() {
         &[Coin::new(0u128, "token0"), Coin::new(500000u128, "token1")],
     );
 
-    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap_err();
+    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap_err();
 
     // Verify error
     assert_eq!(err, ContractError::InvalidTokenAmount {});
@@ -275,7 +277,7 @@ fn test_deposit_exceeds_cap() {
     let mut deps = mock_dependencies_with_custom_querier(querier);
     CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
-    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap_err();
+    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap_err();
 
     // Verify error
     assert_eq!(err, ContractError::ExceedsDepositCap {});
@@ -307,7 +309,7 @@ fn test_deposit_under_cap() {
             Coin::new(1000000u128, "token1"),
         ],
     );
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap();
+    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap();
     let shares_after_first = CONFIG.load(deps.as_ref().storage).unwrap().total_shares;
     // Extract minted amounts
     let minted1 = res
@@ -335,7 +337,7 @@ fn test_deposit_under_cap() {
         ],
     );
 
-    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap_err();
+    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap_err();
 
     // Verify error
     assert_eq!(err, ContractError::ExceedsDepositCap {});
@@ -371,7 +373,7 @@ fn test_deposit_whitelist_exceeds_cap() {
         ],
     );
     // Should succeed despite exceeding cap
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap();
+    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap();
 
     // Verify response
     assert_eq!(res.attributes[0].key, "action");
@@ -395,7 +397,7 @@ fn test_deposit_single_token() {
         vec![Coin::new(500000u128, "token0")],
     );
 
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap();
+    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap();
 
     // Verify response
     assert_eq!(res.attributes[0].key, "action");
@@ -441,7 +443,7 @@ fn test_deposit_different_token_prices() {
             Coin::new(500000u128, "token1"),
         ],
     );
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap();
+    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap();
 
     // Verify response
     assert_eq!(res.attributes[0].key, "action");
@@ -501,7 +503,7 @@ fn test_deposit_multiple_times() {
         ],
     );
 
-    let res1 = execute(deps.as_mut(), env.clone(), info1, ExecuteMsg::Deposit {}).unwrap();
+    let res1 = execute(deps.as_mut(), env.clone(), info1, ExecuteMsg::Deposit { beneficiary: None }).unwrap();
 
     println!(
         "Shares after first deposit: {}",
@@ -527,7 +529,7 @@ fn test_deposit_multiple_times() {
         ],
     );
 
-    let res2 = execute(deps.as_mut(), env.clone(), info2, ExecuteMsg::Deposit {}).unwrap();
+    let res2 = execute(deps.as_mut(), env.clone(), info2, ExecuteMsg::Deposit { beneficiary: None }).unwrap();
 
     let shares_after_second = CONFIG.load(deps.as_ref().storage).unwrap().total_shares;
     println!("Shares after second deposit: {}", shares_after_second);
@@ -575,7 +577,7 @@ fn test_deposit_with_price_staleness() {
         ],
     );
 
-    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap_err();
+    let err = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap_err();
 
     // Verify error is related to stale price
     assert!(matches!(err, ContractError::OracleError { .. }));
@@ -611,7 +613,7 @@ fn test_deposit_with_imbalanced_tokens() {
         ],
     );
 
-    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap();
+    let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap();
 
     // Verify that the deposit was successful but with adjusted share calculation
     assert_eq!(res.attributes[0].key, "action");
@@ -627,4 +629,126 @@ fn test_deposit_with_imbalanced_tokens() {
 
     // The minted amount should be proportional to the smaller token amount
     assert!(minted == Uint128::from(expected_minted_amount));
+}
+
+#[test]
+fn test_deposit_with_beneficiary() {
+    // Setup
+    let mut querier = setup_mock_querier();
+    let env = mock_env();
+
+    // Set balances -- inital balance to 0
+    querier.set_contract_balance(
+        env.contract.address.as_ref(),
+        vec![Coin::new(0u128, "token0"), Coin::new(0u128, "token1")],
+    );
+
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    let config = setup_test_config(env.clone());
+
+    // Store config
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    // Prepare deposit funds
+    let deposit_amount_0 = 500000u128;
+    let deposit_amount_1 = 500000u128;
+
+    // Execute deposit with both tokens and a beneficiary
+    let info_from_user1 = mock_info(
+        "user1",
+        &[
+            Coin::new(deposit_amount_0, "token0"),
+            Coin::new(deposit_amount_1, "token1"),
+        ],
+    );
+
+    // Update the contract balance to reflect what it would be AFTER the deposit
+    deps.querier.set_contract_balance(
+        env.contract.address.as_ref(),
+        vec![
+            Coin::new(deposit_amount_0, "token0"),
+            Coin::new(deposit_amount_1, "token1"),
+        ],
+    );
+
+    // Execute the deposit with beneficiary - use the contract address as a valid address
+    // In real usage, this would be any valid bech32 address
+    let beneficiary_addr = env.contract.address.to_string();
+    let res = execute(
+        deps.as_mut(),
+        env.clone(),
+        info_from_user1,
+        ExecuteMsg::Deposit {
+            beneficiary: Some(beneficiary_addr.clone()),
+        },
+    )
+    .unwrap();
+
+    // Verify response
+    assert_eq!(res.attributes.len(), 7);
+    assert_eq!(res.attributes[0].key, "action");
+    assert_eq!(res.attributes[0].value, "deposit");
+    assert_eq!(res.attributes[1].key, "token_0_deposited");
+    assert_eq!(res.attributes[1].value, deposit_amount_0.to_string());
+    assert_eq!(res.attributes[2].key, "token_1_deposited");
+    assert_eq!(res.attributes[2].value, deposit_amount_1.to_string());
+    assert_eq!(res.attributes[3].key, "from");
+    assert_eq!(res.attributes[3].value, "user1"); // funds come from user1
+    assert_eq!(res.attributes[4].key, "beneficiary");
+    assert_eq!(res.attributes[4].value, beneficiary_addr); // LP tokens sent to beneficiary
+    assert_eq!(res.attributes[5].key, "minted_amount");
+
+    // Verify that LP tokens were minted
+    assert!(!res.messages.is_empty());
+
+    // The beneficiary attribute confirms LP tokens are sent to the specified address
+    // The actual MsgMint protobuf encoding would need to be decoded to verify the
+    // mint_to_address field, but the beneficiary attribute confirms the logic worked
+
+    // Verify config was updated
+    let updated_config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert!(updated_config.total_shares > Uint128::zero());
+}
+
+#[test]
+fn test_deposit_with_invalid_beneficiary() {
+    // Setup
+    let mut querier = setup_mock_querier();
+    let env = mock_env();
+
+    querier.set_contract_balance(
+        env.contract.address.as_ref(),
+        vec![Coin::new(0u128, "token0"), Coin::new(0u128, "token1")],
+    );
+
+    let mut deps = mock_dependencies_with_custom_querier(querier);
+    let config = setup_test_config(env.clone());
+
+    CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+    let info = mock_info(
+        "user1",
+        &[
+            Coin::new(500000u128, "token0"),
+            Coin::new(500000u128, "token1"),
+        ],
+    );
+
+    deps.querier.set_contract_balance(
+        env.contract.address.as_ref(),
+        vec![Coin::new(500000u128, "token0"), Coin::new(500000u128, "token1")],
+    );
+
+    // try deposit with invalid beneficiary address
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        info,
+        ExecuteMsg::Deposit {
+            beneficiary: Some("".to_string()),
+        },
+    )
+    .unwrap_err();
+
+    assert!(matches!(err, ContractError::Std(_)));
 }

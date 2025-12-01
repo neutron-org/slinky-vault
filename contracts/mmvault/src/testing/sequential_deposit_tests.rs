@@ -200,7 +200,7 @@ fn execute_deposit_sequence(scenarios: Vec<DepositScenario>) {
         }
         let info = mock_info(&scenario.user, &funds);
 
-        let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit {}).unwrap();
+        let res = execute(deps.as_mut(), env.clone(), info, ExecuteMsg::Deposit { beneficiary: None }).unwrap();
 
         // Extract minted amount
         let minted = res

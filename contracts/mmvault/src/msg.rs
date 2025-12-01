@@ -171,7 +171,8 @@ impl InstantiateMsg {
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     // deposit funds to use for market making
-    Deposit {},
+    // beneficiary: optional address to receive LP tokens (defaults to sender)
+    Deposit { beneficiary: Option<String> },
     // free and withdraw funds instantly, amount is in LP tokens
     Withdraw { amount: Uint128 },
     // Creates new AMM deposits using contract funds, amount is in token_a and token_b
