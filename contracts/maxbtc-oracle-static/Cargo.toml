@@ -1,0 +1,27 @@
+[package]
+name = "maxbtc-oracle-static"
+version = "0.1.0"
+description = "maxBTC oracle contract that returns redemption rates for both maxBTC and LST tokens"
+edition = { workspace = true }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+library = []
+
+[dependencies]
+serde_json = "1.0"
+schemars = {  workspace = true }
+serde = { version = "1.0.180", default-features = false, features = ["derive"] }
+cosmwasm-std = { workspace = true }
+cw2 = {  workspace = true }
+cw-storage-plus = { workspace = true }
+thiserror = { workspace = true }
+test-case = { workspace = true }
+neutron-std = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+
+[dev-dependencies]
+cosmwasm-schema = { workspace = true }
